@@ -45,7 +45,7 @@ export function makeFormats(lang: Lang): Formats {
 const WIDTHS: Record<string, number> = {
   id: 104,
   client: 216,
-  date: 120,
+  date: 144,
   amount: 128,
   currency: 88,
   status: 152,
@@ -56,7 +56,7 @@ const WIDTHS: Record<string, number> = {
   tags: 184,
   comment: 280,
   channel: 112,
-  updatedAt: 120,
+  updatedAt: 144,
   createdBy: 144,
 };
 const METRIC_WIDTH = 120;
