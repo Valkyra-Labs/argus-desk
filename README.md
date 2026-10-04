@@ -1,5 +1,18 @@
 # Argus Desk
 
+[![CI](https://github.com/Valkyra-Labs/argus-desk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Valkyra-Labs/argus-desk/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![Unit tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Valkyra-Labs/argus-desk/badges/unit-tests.json)](#badges)
+[![e2e](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Valkyra-Labs/argus-desk/badges/e2e.json)](#badges)
+[![axe](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Valkyra-Labs/argus-desk/badges/axe.json)](#badges)
+[![Lighthouse accessibility](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Valkyra-Labs/argus-desk/badges/lighthouse-accessibility.json)](#badges)
+[![Lighthouse best practices](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Valkyra-Labs/argus-desk/badges/lighthouse-best-practices.json)](#badges)
+[![Lighthouse SEO](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Valkyra-Labs/argus-desk/badges/lighthouse-seo.json)](#badges)
+[![Bundle gzip](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Valkyra-Labs/argus-desk/badges/bundle-size.json)](#badges)
+
+The test, axe, Lighthouse and size badges are measured and published by
+CI from `main`; what each one counts is under [Badges](#badges).
+
 A desk for 50,000 service requests in one grid, keyboard first.
 
 - **Filters with counts**: status, priority, SLA breached and region
@@ -97,6 +110,39 @@ pnpm install && pnpm dev          # http://localhost:5178
 pnpm test && pnpm e2e             # e2e builds and serves on port 4178
 pnpm build && pnpm measure        # the measurement record
 ```
+
+`pnpm e2e` builds the app every time and tests the build through
+`vite preview` on 4178; `E2E_PORT` moves it to another port, as CI does:
+
+```bash
+E2E_PORT=4181 pnpm e2e
+```
+
+### Badges
+
+CI checks out this repository, stoa-system and argus-grid side by side,
+builds the engine and Stoa, then builds and tests the app. Each green run
+on `main` publishes the dynamic badges to the `badges` branch, as JSON
+that img.shields.io reads; `scripts/badges.mjs` builds them from that
+run's own output and stops, publishing nothing, when a value cannot be
+read.
+
+- Unit tests: Vitest tests passed (`pnpm test`).
+- e2e: Playwright tests passed in Chromium against `vite preview` of the
+  build (`e2e/`).
+- axe: axe-core 4.13.0 in the e2e, on each of the nine states listed
+  under [Accessibility](#accessibility-as-far-as-the-tests-go) in
+  English, Russian and Arabic, light and dark; a serious or critical
+  violation fails the run. The scans outside that matrix (the conflict
+  dialog in Arabic, dark, and the states in `e2e/states.spec.ts`) fail
+  the run too but are not counted.
+- Lighthouse: Lighthouse 12 accessibility, best practices and SEO scores
+  for the home page served by `vite preview`, the lower of the desktop
+  and mobile runs. Performance is not shown: on a shared CI runner it
+  measures the runner.
+- Bundle gzip: every JavaScript and CSS file in `dist/`, gzip level 9,
+  summed, the grid's worker included. The fonts and `index.html` are not
+  included.
 
 ## License
 
