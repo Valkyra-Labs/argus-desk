@@ -1,0 +1,94 @@
+// Theme (System, Light, Dark) and language (EN, RU, AR), and their persistence.
+import { expect, test } from "@playwright/test";
+import { open } from "./helpers";
+
+test("the theme follows the system until one is chosen", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  const html = page.locator("html");
+  await expect(page.getByRole("radio", { name: "System" })).toBeChecked();
+  await expect(html).not.toHaveAttribute("data-theme");
+  const background = () => html.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const dark = await background();
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(html).not.toHaveAttribute("data-theme");
+  await expect.poll(background).not.toBe(dark);
+});
+
+test("a chosen theme survives a reload and the next visit; System and ?theme=system clear it", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await open(page, "from=link");
+  const html = page.locator("html");
+  await page.getByRole("radio", { name: "Dark" }).click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  const url = new URL(page.url());
+  expect(url.searchParams.get("theme")).toBe("dark");
+  expect(url.searchParams.get("from")).toBe("link");
+  expect(await page.evaluate(() => localStorage.getItem("argus-desk.theme"))).toBe("dark");
+  await page.reload();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("radio", { name: "Dark" })).toBeChecked();
+  // Without the parameter, the choice comes from the last visit.
+  await page.goto("/?lang=ru&colleague=off");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("radio", { name: "Тёмная" })).toBeChecked();
+  // A link's theme wins over the remembered one, and asks for the system.
+  await page.goto("/?theme=system&colleague=off");
+  await expect(html).not.toHaveAttribute("data-theme");
+  await page.goto("/?theme=light&colleague=off");
+  await expect(html).toHaveAttribute("data-theme", "light");
+  await page.getByRole("radio", { name: "System" }).click();
+  await expect(html).not.toHaveAttribute("data-theme");
+  expect(new URL(page.url()).searchParams.get("theme")).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("argus-desk.theme"))).toBeNull();
+});
+
+test("Russian: words, digits and data in Russian, kept after a reload", async ({ page }) => {
+  await open(page);
+  await page.getByRole("radio", { name: "RU", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru");
+  await expect(page).toHaveTitle("Аргус");
+  await expect(page.getByTestId("row-count")).toHaveText("50 000 заявок из 50 000");
+  await expect(page.getByRole("columnheader", { name: "Клиент" })).toBeVisible();
+  await expect(page.locator('[data-cell="0:2"]')).toHaveText("ООО «Ветроплав»");
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "RU", exact: true })).toBeChecked();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Аргус");
+});
+
+test("Arabic: right to left, Arabic-Indic digits, Arabic data, pinned columns at the right", async ({ page }) => {
+  await open(page, "lang=ar", "الطلبات: ٥٠٬٠٠٠ من ٥٠٬٠٠٠");
+  const html = page.locator("html");
+  await expect(html).toHaveAttribute("dir", "rtl");
+  await expect(page).toHaveTitle("أرغوس");
+  await expect(page.getByRole("columnheader", { name: "العميل" })).toBeVisible();
+  await expect(page.locator('[data-cell="0:2"]')).toHaveText(/[؀-ۿ]/);
+  await expect(page.locator('[data-cell="0:3"]')).toHaveText(/[٠-٩]/);
+  // The ID column is pinned at the right edge of a right-to-left grid.
+  const grid = await page.getByRole("grid").boundingBox();
+  const id = await page.getByRole("columnheader", { name: "المعرّف" }).boundingBox();
+  expect(id!.x + id!.width).toBeGreaterThan(grid!.x + grid!.width - 160);
+  // Arrow keys follow the direction: ArrowLeft moves to the next column.
+  await page.locator('[data-cell="0:1"]').click();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator('[data-cell="0:2"]')).toBeFocused();
+  await page.getByRole("radio", { name: "EN", exact: true }).click();
+  await expect(html).toHaveAttribute("dir", "ltr");
+  await expect(page.getByTestId("row-count")).toHaveText("50,000 of 50,000 requests");
+});
+
+test("the theme and language can be chosen with storage blocked", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", {
+      get() {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+  });
+  await open(page);
+  await page.getByRole("radio", { name: "Dark" }).click();
+  await page.getByRole("radio", { name: "AR", exact: true }).click();
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+});
