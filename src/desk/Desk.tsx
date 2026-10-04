@@ -238,9 +238,20 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   // Edits. The editor's session (the value it started from) is taken when
   // focus enters the grid's editor; Stoa's DataGrid reports no edit start.
   const active = useRef<DataGridCell>({ row: 0, column: 0 });
+  const searchBox = useRef<HTMLDivElement>(null);
+  const gridBox = useRef<HTMLDivElement>(null);
+  const focusGrid = () => gridBox.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus();
+  // New rows replace the row elements, and a focused cell goes with its
+  // row; the grid does not restore focus, so the desk puts it back on the
+  // active cell when the person was in the grid.
+  const gridFocused = useRef(false);
+  useLayoutEffect(() => {
+    if (gridFocused.current && (document.activeElement === document.body || document.activeElement === null)) focusGrid();
+  }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
   const sessionRef = useRef<EditSession | null>(null);
   const columnAt = (gridColumn: number) => columns[gridColumn - 1]?.id;
   const onGridFocus = (e: React.FocusEvent) => {
+    gridFocused.current = true;
     if (sessionRef.current || !(e.target as HTMLElement).closest("[data-grid-editor]")) return;
     const row = rows[active.current.row];
     const col = columnAt(active.current.column);
@@ -250,7 +261,8 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     frozen.current = shownResult.current;
     setSession(s);
   };
-  const onGridBlur = () => {
+  const onGridBlur = (e: React.FocusEvent) => {
+    if (e.relatedTarget && !gridBox.current?.contains(e.relatedTarget as Node)) gridFocused.current = false;
     setTimeout(() => {
       if (document.activeElement?.closest("[data-grid-editor]")) return;
       sessionRef.current = null;
@@ -410,20 +422,19 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   };
 
   // Keyboard.
-  const searchBox = useRef<HTMLDivElement>(null);
-  const gridBox = useRef<HTMLDivElement>(null);
-  const focusGrid = () => gridBox.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus();
   const app = t.shortcutGroups.app;
   const shortcuts: Shortcut[] = [
     { key: "/", description: t.keys.search, group: app, onTrigger: () => searchBox.current?.querySelector("input")?.focus() },
     { key: "?", description: t.keys.help, group: app, onTrigger: () => setDialog("shortcuts") },
     { key: "z", modifiers: ["mod"], description: t.keys.undo, group: app, onTrigger: undoLast },
     { key: "g", description: t.keys.grid, group: app, onTrigger: focusGrid },
-    { key: "x", description: t.keys.clear, group: app, onTrigger: clearFilters, isDisabled: !anyFilter },
+    { key: "x", description: t.keys.clear, group: app, onTrigger: clearFilters },
     { key: "s", description: t.keys.saveView, group: app, onTrigger: () => setDialog("save") },
-    { key: "e", description: t.keys.export, group: app, onTrigger: () => void exportCsv(), isDisabled: !canExport(role) },
     { key: "c", description: t.keys.colleague, group: app, onTrigger: simulate },
   ];
+  // Listed only for a role that may export: Stoa draws a disabled line in
+  // the shortcuts dialog below the contrast axe asks for.
+  if (canExport(role)) shortcuts.push({ key: "e", description: t.keys.export, group: app, onTrigger: () => void exportCsv() });
   const help = useShortcuts(shortcuts, { enabled: dialog === null && conflict === null });
   const apple = isApplePlatform();
   const k = (key: string, modifiers?: Shortcut["modifiers"]) => shortcutKeys({ key, modifiers }, apple, stoa.messages);

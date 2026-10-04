@@ -82,13 +82,18 @@ export class DeskEngine {
 
   getSnapshot = (): EngineSnapshot => this.snap;
 
-  start(): void {
-    this.loader.start();
-  }
-
   stop(): void {
     this.loader.stop();
     this.worker = null;
+    // A query sent to the stopped worker never returns; ask it again on
+    // the next start.
+    if (this.inFlight) this.dirty = true;
+    this.inFlight = null;
+  }
+
+  start(): void {
+    this.loader.start();
+    this.pump();
   }
 
   retry(index: number): void {
