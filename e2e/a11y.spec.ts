@@ -14,20 +14,20 @@ for (const [lang, words] of Object.entries(LANGS)) {
     test(`axe: main, selected, editing with an error, shortcuts, save view, columns and empty states (${lang}, ${theme})`, async ({ page }) => {
       await open(page, `lang=${lang}&theme=${theme}&view=${WITH_COMMENTS}`, words.rows);
       await expect(page.locator("html")).toHaveAttribute("dir", lang === "ar" ? "rtl" : "ltr");
-      await expectNoSeriousViolations(page, "main");
+      await expectNoSeriousViolations(page, "main", { lang, theme });
 
       // A selection with the bulk bar, then an editor with its error.
       await cell(page, 0, 1).click();
       await page.keyboard.press("Space");
       await expect(page.locator(".desk__bulk")).toBeVisible();
-      await expectNoSeriousViolations(page, "selected");
+      await expectNoSeriousViolations(page, "selected", { lang, theme });
       await page.keyboard.press("Space");
       await cell(page, 0, 9).click();
       await page.keyboard.press("Enter");
       await grid(page).getByRole("textbox").fill("x".repeat(201));
       await page.keyboard.press("Enter");
       await expect(grid(page).getByRole("alert")).toBeVisible();
-      await expectNoSeriousViolations(page, "editing");
+      await expectNoSeriousViolations(page, "editing", { lang, theme });
       await page.keyboard.press("Escape");
 
       for (const [key, name] of [
@@ -36,18 +36,18 @@ for (const [lang, words] of Object.entries(LANGS)) {
       ] as const) {
         await page.keyboard.press(key);
         await expect(page.getByRole("dialog")).toBeVisible();
-        await expectNoSeriousViolations(page, name);
+        await expectNoSeriousViolations(page, name, { lang, theme });
         await page.keyboard.press("Escape");
         await expect(page.getByRole("dialog")).toHaveCount(0);
       }
       await page.locator(".desk__bar .stoa-toolbar button").nth(2).click();
       await expect(page.getByRole("dialog")).toBeVisible();
-      await expectNoSeriousViolations(page, "columns");
+      await expectNoSeriousViolations(page, "columns", { lang, theme });
       await page.keyboard.press("Escape");
 
       await page.locator(".desk__search input").fill("ؤؤؤ zzz");
       await expect(page.getByTestId("row-count")).toHaveText(words.empty);
-      await expectNoSeriousViolations(page, "empty");
+      await expectNoSeriousViolations(page, "empty", { lang, theme });
     });
 
     test(`axe: loading, partial failure and operator states (${lang}, ${theme})`, async ({ page }) => {
@@ -59,11 +59,11 @@ for (const [lang, words] of Object.entries(LANGS)) {
       });
       await open(page, `lang=${lang}&theme=${theme}&failChunk=3&role=operator`, "");
       await expect(grid(page)).toHaveAttribute("aria-busy", "true");
-      await expectNoSeriousViolations(page, "loading");
+      await expectNoSeriousViolations(page, "loading", { lang, theme });
       release();
       await expect(page.locator(".stoa-callout").filter({ has: page.locator("button") })).toBeVisible({ timeout: 15_000 });
       await expect(grid(page)).not.toHaveAttribute("aria-busy");
-      await expectNoSeriousViolations(page, "error and operator");
+      await expectNoSeriousViolations(page, "error and operator", { lang, theme });
     });
   }
 }

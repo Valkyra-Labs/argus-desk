@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { DEFAULT_VIEW, serializeView } from "argus-grid";
 
@@ -20,7 +20,10 @@ export const grid = (page: Page) => page.getByRole("grid");
 export const cell = (page: Page, row: number, column: number) => grid(page).locator(`[data-cell="${row}:${column}"]`);
 export const toasts = (page: Page) => page.locator(".stoa-toast-region");
 
-export async function expectNoSeriousViolations(page: Page, label = "") {
+/** `scan`, when given, names the language and theme scanned; with `label`
+ * as the state, it is recorded as an annotation that scripts/badges.mjs
+ * reads to state the axe matrix. */
+export async function expectNoSeriousViolations(page: Page, label = "", scan?: { lang: string; theme: string }) {
   // Colours are measured once dialogs and toasts have finished entering;
   // endless pulses (the loading skeleton) are left running.
   await page.waitForFunction(() =>
@@ -29,6 +32,7 @@ export async function expectNoSeriousViolations(page: Page, label = "") {
   const results = await new AxeBuilder({ page }).analyze();
   const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(serious.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`), label).toEqual([]);
+  if (scan) test.info().annotations.push({ type: "axe-scan", description: JSON.stringify({ ...scan, state: label }) });
 }
 
 /** Clicks the cell at a position and waits for it to have focus. */
