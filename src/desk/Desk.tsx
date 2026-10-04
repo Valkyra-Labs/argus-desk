@@ -581,13 +581,13 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
           />
         </div>
         <ChipRow label={t.statusGroup}>
-        <FilterChipGroup<number>
-          label={t.statusGroup}
-          size="small"
-          chips={labels.status.map((label, i) => ({ id: i, label, count: facets?.status[i] }))}
-          value={filters.status}
-          onChange={(status) => setFilters({ status })}
-        />
+          <FilterChipGroup<number>
+            label={t.statusGroup}
+            size="small"
+            chips={labels.status.map((label, i) => ({ id: i, label, count: facets?.status[i] }))}
+            value={filters.status}
+            onChange={(status) => setFilters({ status })}
+          />
         </ChipRow>
         <ChipRow label={t.priorityGroup}>
           <FilterChipGroup<number>
@@ -602,13 +602,13 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
           </FilterChip>
         </ChipRow>
         <ChipRow label={t.regionGroup}>
-        <FilterChipGroup<number>
-          label={t.regionGroup}
-          size="small"
-          chips={regions.map((i) => ({ id: i, label: pools.regions[i] ?? "", count: facets?.region[i] }))}
-          value={filters.regions.filter((r) => regions.includes(r))}
-          onChange={(regions) => setFilters({ regions })}
-        />
+          <FilterChipGroup<number>
+            label={t.regionGroup}
+            size="small"
+            chips={regions.map((i) => ({ id: i, label: pools.regions[i] ?? "", count: facets?.region[i] }))}
+            value={filters.regions.filter((r) => regions.includes(r))}
+            onChange={(regions) => setFilters({ regions })}
+          />
         </ChipRow>
         <div className="desk__row desk__status">
           <p className="desk__count" data-testid="row-count">
