@@ -1,0 +1,715 @@
+// The desk: views, role, filters and search above the grid, bulk changes on
+// the selection, inline edits with conflict resolution, CSV export, and the
+// keyboard shortcuts. Data work goes through DeskEngine (worker first).
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  AlertDialog,
+  Button,
+  Callout,
+  ChoiceGroup,
+  DataGrid,
+  EmptyState,
+  FilterChip,
+  FilterChipGroup,
+  LiveRegion,
+  ProgressBar,
+  Select,
+  ShortcutsDialog,
+  Tag,
+  TextField,
+  ToastQueue,
+  ToastRegion,
+  Toolbar,
+  groupShortcuts,
+  isApplePlatform,
+  shortcutKeys,
+  useShortcuts,
+  useStoaFormat,
+  type DataGridCell,
+  type DataGridEdit,
+  type DataGridSort,
+  type Shortcut,
+  type ShortcutGroup,
+} from "@valkyra-labs/stoa-react";
+import {
+  CSV_LIMIT,
+  DEFAULT_VIEW,
+  EMPTY_FILTERS,
+  EditHistory,
+  OPERATOR_REGIONS,
+  PRESET_VIEWS,
+  REGION_COUNT,
+  applyRemoteEdit,
+  beginEdit,
+  canBulk,
+  canEdit,
+  canExport,
+  colleagueSchedule,
+  criteriaFor,
+  detectConflict,
+  dueTicks,
+  hasActiveFilters,
+  hiddenForRole,
+  isPreset,
+  normalizeDraft,
+  planColleagueEdit,
+  readCell,
+  removeView,
+  rowId,
+  rowOfId,
+  saveView,
+  viewToUrl,
+  visibleColumns,
+  type CellValue,
+  type Density,
+  type EditColumn,
+  type EditSession,
+  type Role,
+  type View,
+} from "argus-grid";
+import { DeskEngine, type QueryResult } from "../data/engine";
+import { POOLS } from "../data/query";
+import type { Lang, Strings } from "../i18n";
+import { buildColumns, cellValueText, editErrorText, makeFormats } from "./columns";
+import { ColumnsSheet, ConflictDialog, SaveViewDialog, type ConflictView } from "./dialogs";
+import { afterPaint, record, recordFirstRows } from "./metrics";
+import { PerfPanel } from "./PerfPanel";
+import { readSavedViews, readUrlConfig, setParam, writeSavedViews, type UrlConfig } from "./settings";
+
+const SEED = 20260904;
+/** Statuses offered for a bulk change. */
+const BULK_STATUSES = [1, 3, 4, 6];
+
+/** Row keys, one string per store row, made once. */
+let keys: string[] = [];
+const rowKey = (i: number): string => keys[i] ?? rowId(i);
+
+type Conflict = { row: number; col: EditColumn; mine: string; base: CellValue; theirs: CellValue; error: string | null };
+
+function createEngine(config: UrlConfig): DeskEngine {
+  return new DeskEngine({
+    seed: SEED,
+    failChunks: config.failChunks,
+    createWorker: config.useWorker ? () => new Worker(new URL("../data/desk.worker.ts", import.meta.url), { type: "module" }) : undefined,
+  });
+}
+
+export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
+  const stoa = useStoaFormat();
+  const [config] = useState(readUrlConfig);
+  const [engine] = useState(() => createEngine(config));
+  const store = engine.store;
+  if (keys.length !== store.size) keys = Array.from({ length: store.size }, (_, i) => rowId(i));
+  const snap = useSyncExternalStore(engine.subscribe, engine.getSnapshot);
+  const history = useRef(new EditHistory());
+  const toasts = useMemo(() => new ToastQueue(), []);
+  const { pools, labels } = POOLS[lang];
+  const formats = useMemo(() => makeFormats(lang), [lang]);
+  const integer = useCallback((n: number) => formats.integer.format(n), [formats]);
+  const decimal = useCallback((n: number) => formats.one.format(n), [formats]);
+
+  const [view, setView] = useState<View>(() => config.view ?? DEFAULT_VIEW);
+  const [dirty, setDirty] = useState(false);
+  const [savedViews, setSavedViews] = useState<View[]>(readSavedViews);
+  const [role, setRole] = useState<Role>(config.role);
+  const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set());
+  const [, setVersion] = useState(0);
+  const bump = () => setVersion((v) => v + 1);
+  const [announcement, setAnnouncement] = useState("");
+  const [dialog, setDialog] = useState<"save" | "delete" | "columns" | "shortcuts" | null>(null);
+  const [bulkStatus, setBulkStatus] = useState(BULK_STATUSES[0]!);
+  const [conflict, setConflict] = useState<Conflict | null>(null);
+  const [session, setSession] = useState<EditSession | null>(null);
+
+  useEffect(() => {
+    engine.start();
+    return () => engine.stop();
+  }, [engine]);
+
+  // Queries: the view's filters as the role sees them, its sort, and the
+  // language (search and text sorts are per language).
+  const criteria = useMemo(() => criteriaFor(view, role), [view.filters, view.search, role]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    engine.query({ criteria, sort: view.sort, lang });
+  }, [engine, criteria, view.sort, lang]);
+
+  // While an editor is open the grid keeps the rows it had: its editor is
+  // tied to a row position, so new rows under it would retarget it.
+  const frozen = useRef<QueryResult | null>(null);
+  const result = session ? frozen.current : snap.result;
+  const shownResult = useRef(result);
+  shownResult.current = result;
+  const rows = useMemo(() => (result ? Array.from(result.index) : []), [result]);
+
+  // Timings: interaction to the repainted grid, round trip, first rows.
+  const pending = useRef<{ kind: "filter" | "sort"; start: number; id: number } | null>(null);
+  const mark = (kind: "filter" | "sort") => {
+    pending.current = { kind, start: performance.now(), id: engine.upcomingId };
+  };
+  useLayoutEffect(() => {
+    if (!result) return;
+    if (result.index.length > 0 || snap.load.loadedRows > 0) recordFirstRows();
+    const p = pending.current;
+    if (p && result.id >= p.id) {
+      pending.current = null;
+      afterPaint(() => record(p.kind, performance.now() - p.start, p.start));
+    }
+  }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const r = snap.result;
+    if (!r) return;
+    record("round-trip", r.roundTripMs);
+    record("compute", r.sortMs + r.searchMs + r.filterMs);
+  }, [snap.result]);
+
+  const ids = useMemo(() => visibleColumns(view, role), [view.columns, role]); // eslint-disable-line react-hooks/exhaustive-deps
+  const columns = useMemo(
+    () => buildColumns(ids, { store, lang, t, formats, editable: canEdit(role) }),
+    [ids, store, lang, t, formats, role],
+  );
+
+  const announce = (text: string) => setAnnouncement(text);
+
+  // Views.
+  const viewLabel = (v: View) => (isPreset(v.name) ? labels.presets[v.name as keyof typeof labels.presets] : v.name || t.unsavedView);
+  const patchView = (patch: Partial<View>) => {
+    setView((v) => ({ ...v, ...patch }));
+    setDirty(true);
+  };
+  const applyView = (next: View) => {
+    mark("filter");
+    setView(next);
+    setDirty(false);
+    setSelection(new Set());
+    announce(t.viewApplied(viewLabel(next)));
+  };
+  const allViews = [...PRESET_VIEWS, ...savedViews];
+  const viewOptions = allViews.map((v) => ({ id: v.name, label: viewLabel(v) }));
+  if (!allViews.some((v) => v.name === view.name)) viewOptions.push({ id: view.name || "-", label: viewLabel(view) });
+  const isSaved = savedViews.some((v) => v.name === view.name);
+
+  const onSaveView = (name: string) => {
+    const list = saveView(savedViews, view, name);
+    setSavedViews(list);
+    writeSavedViews(list);
+    setView({ ...view, name });
+    setDirty(false);
+    setDialog(null);
+    toasts.add({ tone: "positive", text: t.viewSaved(name), timeout: 5000 });
+  };
+  const onDeleteView = () => {
+    const name = view.name;
+    const list = removeView(savedViews, name);
+    setSavedViews(list);
+    writeSavedViews(list);
+    applyView(DEFAULT_VIEW);
+    toasts.add({ tone: "info", text: t.viewDeleted(name), timeout: 5000 });
+  };
+  const copyLink = () => {
+    const url = viewToUrl(view, location.href);
+    window.history.replaceState(window.history.state, "", url);
+    const done = (copied: boolean) => toasts.add({ tone: "info", text: copied ? t.linkCopied : t.linkInAddressBar, timeout: 5000 });
+    if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => done(true), () => done(false));
+    else done(false);
+  };
+
+  // Role.
+  const changeRole = (next: Role) => {
+    mark("filter");
+    setRole(next);
+    setParam("role", next === "manager" ? null : next);
+    setSelection(new Set());
+  };
+
+  // Filters.
+  const filters = view.filters;
+  const setFilters = (patch: Partial<typeof filters>) => {
+    mark("filter");
+    patchView({ filters: { ...filters, ...patch } });
+  };
+  const clearFilters = () => {
+    mark("filter");
+    patchView({ filters: EMPTY_FILTERS, search: "" });
+  };
+  const anyFilter = hasActiveFilters(filters) || view.search.trim() !== "";
+  const facets = result?.facets;
+  const regions = role === "operator" ? OPERATOR_REGIONS : Array.from({ length: REGION_COUNT }, (_, i) => i);
+
+  // Edits. The editor's session (the value it started from) is taken when
+  // focus enters the grid's editor; Stoa's DataGrid reports no edit start.
+  const active = useRef<DataGridCell>({ row: 0, column: 0 });
+  const sessionRef = useRef<EditSession | null>(null);
+  const columnAt = (gridColumn: number) => columns[gridColumn - 1]?.id;
+  const onGridFocus = (e: React.FocusEvent) => {
+    if (sessionRef.current || !(e.target as HTMLElement).closest("[data-grid-editor]")) return;
+    const row = rows[active.current.row];
+    const col = columnAt(active.current.column);
+    if (row === undefined || (col !== "status" && col !== "comment")) return;
+    const s = beginEdit(store, row, col);
+    sessionRef.current = s;
+    frozen.current = shownResult.current;
+    setSession(s);
+  };
+  const onGridBlur = () => {
+    setTimeout(() => {
+      if (document.activeElement?.closest("[data-grid-editor]")) return;
+      sessionRef.current = null;
+      setSession(null);
+    }, 0);
+  };
+
+  /** Saves an edit through the history; returns the refusal, if any. */
+  const applyEdit = (row: number, col: EditColumn, value: string): string | null => {
+    const now = Date.now();
+    const res =
+      col === "status"
+        ? history.current.setStatus(store, [row], Number(value), now)
+        : history.current.setComment(store, row, { kind: "text", text: normalizeDraft(col, value) }, now);
+    const refused = res.rejected[0];
+    if (refused) {
+      const reason = editErrorText(t, formats, refused.error);
+      announce(t.editRefused(rowId(row), reason));
+      return reason;
+    }
+    engine.sync([row], col === "comment");
+    bump();
+    announce(t.editSaved(rowId(row), labels.columns[col] ?? col, cellValueText(readCell(store, row, col), lang, t)));
+    return null;
+  };
+
+  const onEdit = ({ row, column, value }: DataGridEdit<number>) => {
+    if (column !== "status" && column !== "comment") return;
+    const s = sessionRef.current;
+    if (s && s.row === row && s.col === column) {
+      const found = detectConflict(store, s);
+      if (found) {
+        setConflict({ row, col: column, mine: value, base: s.base, theirs: found.theirs, error: null });
+        return;
+      }
+    }
+    applyEdit(row, column, value);
+  };
+
+  const conflictView: ConflictView | null = conflict && {
+    id: rowId(conflict.row),
+    column: labels.columns[conflict.col] ?? conflict.col,
+    theirs: cellValueText(conflict.theirs, lang, t),
+    mine:
+      conflict.col === "status"
+        ? cellValueText({ col: "status", value: Number(conflict.mine) }, lang, t)
+        : conflict.mine.trim() || t.emptyComment,
+    started: cellValueText(conflict.base, lang, t),
+    error: conflict.error,
+  };
+  const keepTheirs = () => {
+    if (!conflict) return;
+    setConflict(null);
+    toasts.add({ tone: "info", text: t.keptTheirs(rowId(conflict.row)), timeout: 5000 });
+  };
+  const useMine = () => {
+    if (!conflict) return;
+    const error = applyEdit(conflict.row, conflict.col, conflict.mine);
+    if (error) setConflict({ ...conflict, error });
+    else {
+      setConflict(null);
+      toasts.add({ tone: "positive", text: t.usedMine(rowId(conflict.row)), timeout: 5000 });
+    }
+  };
+
+  // The simulated colleague.
+  const tick = useRef(0);
+  const simulate = () => {
+    const visible = shownResult.current?.index ?? new Uint32Array(0);
+    const s = sessionRef.current;
+    const edit = planColleagueEdit(store, visible, tick.current++, s);
+    if (!edit) return;
+    applyRemoteEdit(store, edit, Date.now());
+    engine.sync([edit.row], edit.cell.col === "comment");
+    bump();
+    const id = rowId(edit.row);
+    const column = labels.columns[edit.cell.col] ?? edit.cell.col;
+    const value = cellValueText(edit.cell, lang, t);
+    const mine = s !== null && s.row === edit.row && s.col === edit.cell.col;
+    toasts.add({ tone: mine ? "warning" : "info", text: mine ? t.colleagueEditing(id, column, value) : t.colleagueChanged(id, column, value), timeout: 6000 });
+  };
+  const simulateRef = useRef(simulate);
+  simulateRef.current = simulate;
+  useEffect(() => {
+    const seconds = config.colleagueSeconds;
+    if (seconds === null) return;
+    const schedule = colleagueSchedule(SEED, 10_000, seconds * 1000);
+    const started = performance.now();
+    let fired = 0;
+    const timer = setInterval(() => {
+      const due = dueTicks(schedule, performance.now() - started);
+      for (; fired < due; fired++) simulateRef.current();
+    }, Math.min(1000, seconds * 250));
+    return () => clearInterval(timer);
+  }, [config.colleagueSeconds]);
+
+  // Selection and bulk changes. A bulk change applies to the selected rows
+  // that the current view shows.
+  const selectedRows = useMemo(() => {
+    if (selection.size === 0 || !result) return [];
+    const shown = new Uint8Array(store.size);
+    for (const i of result.index) shown[i] = 1;
+    const out: number[] = [];
+    for (const key of selection) {
+      const r = rowOfId(key, store.size);
+      if (r >= 0 && shown[r] === 1) out.push(r);
+    }
+    return out;
+  }, [selection, result, store]);
+
+  const undoLast = () => {
+    const r = history.current.undo(store);
+    if (!r) {
+      announce(t.nothingToUndo);
+      return;
+    }
+    engine.sync(r.restored, r.entry.kind === "comment");
+    bump();
+    const n = r.restored.length;
+    const c = r.conflicts.length;
+    toasts.add({
+      tone: c > 0 ? "warning" : "info",
+      text: [n > 0 ? t.undone(integer(n), n) : "", c > 0 ? t.undoConflicts(integer(c), c) : ""].filter(Boolean).join(" "),
+      timeout: 6000,
+    });
+  };
+
+  const applyBulk = () => {
+    if (selectedRows.length === 0 || !canBulk(role)) return;
+    const res = history.current.setStatus(store, selectedRows, bulkStatus, Date.now());
+    const skipped = res.rejected.length;
+    setSelection(new Set());
+    if (!res.entry) {
+      toasts.add({ tone: "warning", text: t.bulkSkipped(integer(skipped)), timeout: 6000 });
+      return;
+    }
+    engine.sync(res.applied, false);
+    bump();
+    const n = res.applied.length;
+    const text = [t.bulkDone(labels.status[bulkStatus] ?? "", integer(n), n), skipped > 0 ? t.bulkSkipped(integer(skipped)) : ""].filter(Boolean).join(" ");
+    toasts.add({ tone: skipped > 0 ? "warning" : "positive", text, action: { label: t.undo, onAction: undoLast }, timeout: 10_000 });
+  };
+
+  // CSV export of the current view, computed in the worker.
+  const exportCsv = async () => {
+    if (!canExport(role) || !result) return;
+    const total = result.index.length;
+    const text = await engine.csv(result.index, ids, lang, CSV_LIMIT);
+    const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = t.csvFile;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    const n = Math.min(total, CSV_LIMIT);
+    toasts.add({ tone: "positive", text: total > CSV_LIMIT ? t.exportedCapped(integer(n), integer(total)) : t.exported(integer(n), n), timeout: 6000 });
+  };
+
+  // Keyboard.
+  const searchBox = useRef<HTMLDivElement>(null);
+  const gridBox = useRef<HTMLDivElement>(null);
+  const focusGrid = () => gridBox.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus();
+  const app = t.shortcutGroups.app;
+  const shortcuts: Shortcut[] = [
+    { key: "/", description: t.keys.search, group: app, onTrigger: () => searchBox.current?.querySelector("input")?.focus() },
+    { key: "?", description: t.keys.help, group: app, onTrigger: () => setDialog("shortcuts") },
+    { key: "z", modifiers: ["mod"], description: t.keys.undo, group: app, onTrigger: undoLast },
+    { key: "g", description: t.keys.grid, group: app, onTrigger: focusGrid },
+    { key: "x", description: t.keys.clear, group: app, onTrigger: clearFilters, isDisabled: !anyFilter },
+    { key: "s", description: t.keys.saveView, group: app, onTrigger: () => setDialog("save") },
+    { key: "e", description: t.keys.export, group: app, onTrigger: () => void exportCsv(), isDisabled: !canExport(role) },
+    { key: "c", description: t.keys.colleague, group: app, onTrigger: simulate },
+  ];
+  const help = useShortcuts(shortcuts, { enabled: dialog === null && conflict === null });
+  const apple = isApplePlatform();
+  const k = (key: string, modifiers?: Shortcut["modifiers"]) => shortcutKeys({ key, modifiers }, apple, stoa.messages);
+  const gridGroups: ShortcutGroup[] = [
+    {
+      title: t.shortcutGroups.grid,
+      shortcuts: [
+        { keys: [...k("ArrowUp"), ...k("ArrowDown"), ...k("ArrowLeft"), ...k("ArrowRight")], description: t.keys.move },
+        { keys: k("Home"), description: t.keys.rowStart },
+        { keys: k("End"), description: t.keys.rowEnd },
+        { keys: k("Home", ["mod"]), description: t.keys.gridStart },
+        { keys: k("End", ["mod"]), description: t.keys.gridEnd },
+        { keys: k("PageUp"), description: t.keys.pageUp },
+        { keys: k("PageDown"), description: t.keys.pageDown },
+        { keys: k("Enter"), description: t.keys.sort },
+      ],
+    },
+    {
+      title: t.shortcutGroups.editing,
+      shortcuts: [
+        { keys: k("F2"), description: t.keys.edit },
+        { keys: k("Enter"), description: t.keys.saveEdit },
+        { keys: k("Escape"), description: t.keys.cancelEdit },
+      ],
+    },
+    {
+      title: t.shortcutGroups.selection,
+      shortcuts: [
+        { keys: k(" "), description: t.keys.selectRow },
+        { keys: k("ArrowDown", ["shift"]), description: t.keys.extend },
+        { keys: k("a", ["mod"]), description: t.keys.selectAll },
+      ],
+    },
+  ];
+  const groups = [...gridGroups, ...groupShortcuts(help, app)];
+
+  // States.
+  const load = snap.load;
+  const loading = !result || (load.loadedRows === 0 && load.loading);
+  const sort: DataGridSort | null = view.sort ? { column: view.sort.id, direction: view.sort.desc ? "descending" : "ascending" } : null;
+  const density = view.density === "default" ? "regular" : view.density;
+  const hidden = hiddenForRole(view, role);
+  const shownCount = result?.index.length ?? 0;
+
+  return (
+    <div className="desk">
+      <section className="desk__bar" aria-label={t.view}>
+        <div className="desk__row">
+          <div className="desk__view">
+            <Select<string>
+              label={t.view}
+              size="small"
+              options={viewOptions}
+              value={view.name || "-"}
+              onChange={(name) => {
+                const next = allViews.find((v) => v.name === name);
+                if (next) applyView(next);
+              }}
+            />
+            {dirty && <Tag tone="warning" size="small">{t.viewModified}</Tag>}
+          </div>
+          <ChoiceGroup<Role>
+            label={t.role}
+            size="small"
+            value={role}
+            onChange={changeRole}
+            choices={[
+              { id: "operator", label: t.roles.operator },
+              { id: "manager", label: t.roles.manager },
+            ]}
+          />
+          <ChoiceGroup<Density>
+            label={t.density}
+            size="small"
+            value={view.density}
+            onChange={(d) => patchView({ density: d })}
+            choices={[
+              { id: "compact", label: t.densities.compact },
+              { id: "default", label: t.densities.default },
+              { id: "comfortable", label: t.densities.comfortable },
+            ]}
+          />
+        </div>
+        <Toolbar label={t.actionsLabel}>
+          <Button onPress={() => setDialog("save")}>{t.saveView}</Button>
+          <Button variant="ghost" onPress={copyLink}>{t.copyLink}</Button>
+          {isSaved && (
+            <Button variant="ghost" onPress={() => setDialog("delete")}>{t.deleteView}</Button>
+          )}
+          <Button variant="ghost" onPress={() => setDialog("columns")}>{t.columns}</Button>
+          {canExport(role) && (
+            <Button variant="ghost" onPress={() => void exportCsv()} isDisabled={!result || shownCount === 0}>
+              {t.exportCsv}
+            </Button>
+          )}
+          <Button variant="ghost" onPress={simulate}>{t.simulateColleague}</Button>
+          <Button variant="ghost" onPress={() => setDialog("shortcuts")}>{t.shortcuts}</Button>
+        </Toolbar>
+      </section>
+
+      <section className="desk__filters" aria-label={t.filtersLabel}>
+        <div className="desk__search" ref={searchBox}>
+          <TextField
+            label={t.search}
+            value={view.search}
+            placeholder={t.searchHint}
+            onChange={(search) => {
+              mark("filter");
+              patchView({ search });
+            }}
+          />
+        </div>
+        <ChipRow label={t.statusGroup}>
+        <FilterChipGroup<number>
+          label={t.statusGroup}
+          size="small"
+          chips={labels.status.map((label, i) => ({ id: i, label, count: facets?.status[i] }))}
+          value={filters.status}
+          onChange={(status) => setFilters({ status })}
+        />
+        </ChipRow>
+        <ChipRow label={t.priorityGroup}>
+          <FilterChipGroup<number>
+            label={t.priorityGroup}
+            size="small"
+            chips={labels.priority.map((label, i) => ({ id: i, label, count: facets?.priority[i] }))}
+            value={filters.priority}
+            onChange={(priority) => setFilters({ priority })}
+          />
+          <FilterChip size="small" isSelected={filters.slaBreached} onChange={(on) => setFilters({ slaBreached: on })} count={facets?.slaBreached}>
+            {t.slaBreached}
+          </FilterChip>
+        </ChipRow>
+        <ChipRow label={t.regionGroup}>
+        <FilterChipGroup<number>
+          label={t.regionGroup}
+          size="small"
+          chips={regions.map((i) => ({ id: i, label: pools.regions[i] ?? "", count: facets?.region[i] }))}
+          value={filters.regions.filter((r) => regions.includes(r))}
+          onChange={(regions) => setFilters({ regions })}
+        />
+        </ChipRow>
+        <div className="desk__row desk__status">
+          <p className="desk__count" data-testid="row-count">
+            {t.shownOf(integer(shownCount), integer(load.loadedRows), shownCount)}
+          </p>
+          {snap.busy && result && <span className="muted">{t.updating}</span>}
+          {anyFilter && (
+            <Button variant="ghost" onPress={clearFilters}>
+              {t.clearFilters}
+            </Button>
+          )}
+        </div>
+      </section>
+
+      {role === "operator" && (
+        <Callout tone="info" role="none">
+          {t.operatorNote(OPERATOR_REGIONS.map((r) => pools.regions[r]).join(", "))}{" "}
+          {hidden.length > 0 && `${t.operatorHidden(hidden.map((id) => labels.columns[id] ?? id).join(", "))} `}
+          {t.operatorActions}
+        </Callout>
+      )}
+      {snap.mode === "main" && (
+        // Announced when the worker fails during the session; a page opened
+        // without one says it as part of the page.
+        <Callout tone="warning" role={config.useWorker ? "alert" : "none"}>
+          {t.workerFallback}
+        </Callout>
+      )}
+      {load.chunkErrors.length > 0 && (
+        <Callout
+          tone="negative"
+          role="alert"
+          title={t.chunkErrorTitle}
+          action={
+            <Button onPress={() => load.chunkErrors.forEach((e) => engine.retry(e.index))}>{t.retry}</Button>
+          }
+        >
+          {load.chunkErrors.map((e) => t.chunkErrorRange(integer(e.start + 1), integer(e.start + e.count))).join(" ")}
+        </Callout>
+      )}
+      {load.loading && <ProgressBar label={t.generating} value={load.loadedRows} maxValue={store.size} formatValue={integer} />}
+
+      {selectedRows.length > 0 && (
+        <section className="desk__bulk" aria-label={t.bulkLabel}>
+          <p className="desk__count">{t.selected(integer(selectedRows.length))}</p>
+          {canBulk(role) ? (
+            <>
+              <Select<number>
+                label={t.bulkStatus}
+                size="small"
+                options={BULK_STATUSES.map((s) => ({ id: s, label: labels.status[s] ?? "" }))}
+                value={bulkStatus}
+                onChange={setBulkStatus}
+              />
+              <Button variant="primary" onPress={applyBulk}>{t.apply}</Button>
+            </>
+          ) : (
+            <p className="muted">{t.bulkNeedsManager}</p>
+          )}
+          <Button variant="ghost" onPress={() => setSelection(new Set())}>{t.clearSelection}</Button>
+        </section>
+      )}
+
+      <div className="desk__grid" data-density={density} ref={gridBox} onFocus={onGridFocus} onBlur={onGridBlur}>
+        <DataGrid<number>
+          label={t.gridLabel}
+          rows={rows}
+          columns={columns}
+          rowKey={rowKey}
+          sort={sort}
+          onSortChange={(s) => {
+            mark("sort");
+            patchView({ sort: s ? { id: s.column, desc: s.direction === "descending" } : null });
+          }}
+          manualSorting
+          selectionMode="multiple"
+          selectedKeys={selection}
+          onSelectionChange={setSelection}
+          onActiveCellChange={(cell) => {
+            active.current = cell;
+          }}
+          onEdit={onEdit}
+          highlight={view.search.trim()}
+          loading={loading}
+          className="desk__grid-box"
+          emptyState={
+            <EmptyState
+              title={t.emptyTitle}
+              description={t.emptyBody}
+              action={
+                <Button onPress={clearFilters}>
+                  {t.clearFilters}
+                </Button>
+              }
+            />
+          }
+        />
+      </div>
+
+      <PerfPanel t={t} mode={snap.mode} loaded={load.loadedRows} integer={integer} decimal={decimal} />
+
+      <LiveRegion>{announcement}</LiveRegion>
+      <ToastRegion queue={toasts} />
+      <ShortcutsDialog isOpen={dialog === "shortcuts"} onOpenChange={(open) => !open && setDialog(null)} title={t.shortcutsTitle} groups={groups} />
+      <SaveViewDialog
+        isOpen={dialog === "save"}
+        initialName={isPreset(view.name) ? "" : view.name}
+        t={t}
+        integer={integer}
+        onClose={() => setDialog(null)}
+        onSave={onSaveView}
+      />
+      <AlertDialog
+        isOpen={dialog === "delete"}
+        onOpenChange={(open) => !open && setDialog(null)}
+        title={t.deleteViewTitle(view.name)}
+        confirmLabel={t.deleteViewConfirm}
+        tone="destructive"
+        onConfirm={onDeleteView}
+      >
+        {t.deleteViewBody}
+      </AlertDialog>
+      <ColumnsSheet
+        isOpen={dialog === "columns"}
+        onClose={() => setDialog(null)}
+        columns={view.columns}
+        onChange={(next) => patchView({ columns: next })}
+        role={role}
+        headers={labels.columns}
+        t={t}
+      />
+      <ConflictDialog conflict={conflictView} t={t} onKeepTheirs={keepTheirs} onUseMine={useMine} />
+    </div>
+  );
+}
+
+/** A filter group with its name shown before it. The group carries the
+ * same name for assistive technology, so the shown one is hidden from it. */
+function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="chip-row">
+      <span className="chip-row__label" aria-hidden="true">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
