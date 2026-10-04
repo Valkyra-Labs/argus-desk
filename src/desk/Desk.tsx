@@ -1,7 +1,7 @@
 // The desk: views, role, filters and search above the grid, bulk changes on
 // the selection, inline edits with conflict resolution, CSV export, and the
 // keyboard shortcuts. Data work goes through DeskEngine (worker first).
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   AlertDialog,
   Button,
@@ -26,6 +26,7 @@ import {
   useShortcuts,
   useStoaFormat,
   type DataGridCell,
+  type DataGridColumn,
   type DataGridEdit,
   type DataGridSort,
   type Shortcut,
@@ -113,7 +114,8 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   const [savedViews, setSavedViews] = useState<View[]>(readSavedViews);
   const [role, setRole] = useState<Role>(config.role);
   const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set());
-  const [, setVersion] = useState(0);
+  // Bumped by every write to the store, so the grid draws the new values.
+  const [version, setVersion] = useState(0);
   const bump = () => setVersion((v) => v + 1);
   const [announcement, setAnnouncement] = useState("");
   const [dialog, setDialog] = useState<"save" | "delete" | "columns" | "shortcuts" | null>(null);
@@ -158,8 +160,11 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   useEffect(() => {
     const r = snap.result;
     if (!r) return;
-    record("round-trip", r.roundTripMs);
-    record("compute", r.sortMs + r.searchMs + r.filterMs);
+    const now = performance.now();
+    const compute = r.sortMs + r.searchMs + r.filterMs;
+    record("round-trip", r.roundTripMs, now - r.roundTripMs);
+    // Measured inside the worker; only its duration is meaningful.
+    record("compute", compute, now - compute);
   }, [snap.result]);
 
   const ids = useMemo(() => visibleColumns(view, role), [view.columns, role]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -471,10 +476,38 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   ];
   const groups = [...gridGroups, ...groupShortcuts(help, app)];
 
+  // The grid only renders again when what it shows changes; its handlers
+  // reach the latest state through a ref.
+  const latest = useRef({ onEdit, mark, patchView });
+  latest.current = { onEdit, mark, patchView };
+  const gridHandlers = useMemo<GridHandlers>(
+    () => ({
+      onSortChange: (s) => {
+        latest.current.mark("sort");
+        latest.current.patchView({ sort: s ? { id: s.column, desc: s.direction === "descending" } : null });
+      },
+      onSelectionChange: setSelection,
+      onActiveCellChange: (cell) => {
+        active.current = cell;
+      },
+      onEdit: (edit) => latest.current.onEdit(edit),
+    }),
+    [],
+  );
+  const clearRef = useRef(clearFilters);
+  clearRef.current = clearFilters;
+  const emptyState = useMemo(
+    () => <EmptyState title={t.emptyTitle} description={t.emptyBody} action={<Button onPress={() => clearRef.current()}>{t.clearFilters}</Button>} />,
+    [t],
+  );
+
   // States.
   const load = snap.load;
   const loading = !result || (load.loadedRows === 0 && load.loading);
-  const sort: DataGridSort | null = view.sort ? { column: view.sort.id, direction: view.sort.desc ? "descending" : "ascending" } : null;
+  const sort = useMemo<DataGridSort | null>(
+    () => (view.sort ? { column: view.sort.id, direction: view.sort.desc ? "descending" : "ascending" } : null),
+    [view.sort],
+  );
   const density = view.density === "default" ? "regular" : view.density;
   const hidden = hiddenForRole(view, role);
   const shownCount = result?.index.length ?? 0;
@@ -640,38 +673,17 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
       )}
 
       <div className="desk__grid" data-density={density} ref={gridBox} onFocus={onGridFocus} onBlur={onGridBlur}>
-        <DataGrid<number>
+        <GridView
           label={t.gridLabel}
           rows={rows}
           columns={columns}
-          rowKey={rowKey}
           sort={sort}
-          onSortChange={(s) => {
-            mark("sort");
-            patchView({ sort: s ? { id: s.column, desc: s.direction === "descending" } : null });
-          }}
-          manualSorting
-          selectionMode="multiple"
-          selectedKeys={selection}
-          onSelectionChange={setSelection}
-          onActiveCellChange={(cell) => {
-            active.current = cell;
-          }}
-          onEdit={onEdit}
+          selection={selection}
           highlight={view.search.trim()}
           loading={loading}
-          className="desk__grid-box"
-          emptyState={
-            <EmptyState
-              title={t.emptyTitle}
-              description={t.emptyBody}
-              action={
-                <Button onPress={clearFilters}>
-                  {t.clearFilters}
-                </Button>
-              }
-            />
-          }
+          emptyState={emptyState}
+          version={version}
+          handlers={gridHandlers}
         />
       </div>
 
@@ -711,6 +723,52 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     </div>
   );
 }
+
+type GridHandlers = {
+  onSortChange: (sort: DataGridSort | null) => void;
+  onSelectionChange: (keys: Set<string>) => void;
+  onActiveCellChange: (cell: DataGridCell) => void;
+  onEdit: (edit: DataGridEdit<number>) => void;
+};
+
+type GridViewProps = {
+  label: string;
+  rows: number[];
+  columns: DataGridColumn<number>[];
+  sort: DataGridSort | null;
+  selection: ReadonlySet<string>;
+  highlight: string;
+  loading: boolean;
+  emptyState: React.ReactNode;
+  /** Not drawn: a new value makes the grid read the store again. */
+  version: number;
+  handlers: GridHandlers;
+};
+
+/** The DataGrid, drawn again only when one of its inputs changes, not on
+ * every change of the desk around it (a chip pressed, a dialog opened). */
+const GridView = memo(function GridView({ label, rows, columns, sort, selection, highlight, loading, emptyState, handlers }: GridViewProps) {
+  return (
+    <DataGrid<number>
+      label={label}
+      rows={rows}
+      columns={columns}
+      rowKey={rowKey}
+      sort={sort}
+      onSortChange={handlers.onSortChange}
+      manualSorting
+      selectionMode="multiple"
+      selectedKeys={selection}
+      onSelectionChange={handlers.onSelectionChange}
+      onActiveCellChange={handlers.onActiveCellChange}
+      onEdit={handlers.onEdit}
+      highlight={highlight}
+      loading={loading}
+      className="desk__grid-box"
+      emptyState={emptyState}
+    />
+  );
+});
 
 /** A filter group with its name shown before it. The group carries the
  * same name for assistive technology, so the shown one is hidden from it. */

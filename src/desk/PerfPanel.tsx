@@ -1,10 +1,11 @@
 // What this tab measured: time to the first rows, filter and sort latency
 // (input to repainted grid), and the worker's round trip and compute time.
+import { memo } from "react";
 import { Disclosure, StatBar, type StatBarItem } from "@valkyra-labs/stoa-react";
 import type { Strings } from "../i18n";
 import { percentile, useMetrics } from "./metrics";
 
-export function PerfPanel({ t, mode, loaded, integer, decimal }: {
+export const PerfPanel = memo(function PerfPanel({ t, mode, loaded, integer, decimal }: {
   t: Strings;
   mode: "worker" | "main";
   loaded: number;
@@ -32,4 +33,4 @@ export function PerfPanel({ t, mode, loaded, integer, decimal }: {
       <StatBar label={t.performance} items={items} />
     </Disclosure>
   );
-}
+});
