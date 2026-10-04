@@ -168,11 +168,7 @@ async function main() {
         (e) => {
           if (e.key !== "ArrowDown") return;
           const t0 = performance.now();
-          // The next task runs after the grid's handler and React's render
-          // and commit; the frame after that is when the move is on screen.
-          const task = new MessageChannel();
-          task.port1.onmessage = () => window.__tasks.push(performance.now() - t0);
-          task.port2.postMessage(null);
+          window.__t0 = t0;
           requestAnimationFrame(() => {
             const ch = new MessageChannel();
             ch.port1.onmessage = () => window.__moves.push(performance.now() - t0);
@@ -181,6 +177,11 @@ async function main() {
         },
         { capture: true },
       );
+      // Bubbling to the window comes after React's listener on its root,
+      // which handles a key press, renders and commits synchronously.
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown") window.__tasks.push(performance.now() - window.__t0);
+      });
     });
     await page.locator('[data-cell="0:1"]').click();
     for (let i = 0; i < 300; i++) {
@@ -213,7 +214,7 @@ async function main() {
       `worker round trip (query posted to result received, every query above): ${dist(out.roundTrip)}`,
       `worker compute (sort, search index and filter inside the worker, same queries): ${dist(out.compute)}`,
       `scroll frame intervals (300 frames down at 56 px, 120 sideways at 24 px, 3 runs pooled): p50 ${f1(pct(out.frames, 50))} / p95 ${f1(pct(out.frames, 95))} / max ${f1(Math.max(...out.frames))} ms; over 20 ms: ${out.frames.filter((x) => x > 20).length} of ${out.frames.length}`,
-      `active-cell move (ArrowDown, key event to the next task: handler, render, commit, focus): ${dist(out.moveTasks)}`,
+      `active-cell move (ArrowDown, capture to bubble at the window: the grid's handler, React render and commit, focus): ${dist(out.moveTasks)}`,
       `active-cell move (ArrowDown, key event to the frame after): ${dist(out.moves)}; landed on aria-rowindex ${out.landed}`,
       `main-thread JS heap after load: ${mib(out.heapLoaded)}; after a forced GC: ${mib(out.heapAfterGc)} (the worker's heap is not included)`,
       `bundle JS: ${js.map((a) => `${a.f} ${kib(a.raw)} raw, ${kib(a.gz)} gzip`).join("; ")}`,
