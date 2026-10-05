@@ -53,5 +53,6 @@ body { margin: 0; }
 .columns-sheet { display: grid; gap: var(--stoa-space-3); }
 .columns-sheet p { margin: 0; }
 .columns-sheet__heading { margin: 0; font-size: var(--stoa-font-size-md); font-weight: var(--stoa-font-weight-semibold); }
-.chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--stoa-space-2); min-inline-size: 0; }
-.chip-row__label { min-inline-size: calc(var(--stoa-space-12) * 2); color: var(--stoa-color-text-muted); font-size: var(--stoa-font-size-sm); }
+/* A filter group, with its label above it, and any chip that goes with
+   it, on the line of the group's chips. */
+.chip-row { display: flex; flex-wrap: wrap; align-items: end; gap: var(--stoa-space-2); min-inline-size: 0; }
