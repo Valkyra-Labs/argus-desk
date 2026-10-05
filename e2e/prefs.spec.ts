@@ -10,9 +10,18 @@ test("the theme follows the system until one is chosen", async ({ page }) => {
   await expect(html).not.toHaveAttribute("data-theme");
   const background = () => html.evaluate((el) => getComputedStyle(el).backgroundColor);
   const dark = await background();
+  // The browser's own controls and scrollbars follow the theme too.
+  const scheme = () => html.evaluate((el) => getComputedStyle(el).colorScheme);
+  expect(await scheme()).toBe("dark");
   await page.emulateMedia({ colorScheme: "light" });
   await expect(html).not.toHaveAttribute("data-theme");
   await expect.poll(background).not.toBe(dark);
+  expect(await scheme()).toBe("light");
+  await page.getByRole("radio", { name: "Dark" }).click();
+  await expect.poll(scheme).toBe("dark");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.getByRole("radio", { name: "Light" }).click();
+  await expect.poll(scheme).toBe("light");
 });
 
 test("a chosen theme survives a reload and the next visit; System and ?theme=system clear it", async ({ page }) => {
