@@ -87,10 +87,17 @@ columns dialogs, no matches, loading, a partial load failure with the
 operator role; and on the conflict dialog with a toast in Arabic, dark.
 They also check: the main tasks by keyboard (grid moves, sorting from a
 header, editing and its errors, selecting rows, undo, the app
-shortcuts); Arabic right to left with the arrow keys mirrored and the
-pinned columns at the right; no sideways page scroll at 1280 and 375 px
-in every language; the header staying put while the page scrolls under
-it, and the page's and the grid's scrollbars drawn in Stoa's tokens.
+shortcuts) and editing with the mouse (a double click opens the editor);
+where the focus goes after a bulk change, a Retry, the conflict dialog
+and deleting a view (never to the page's body), and that Escape in the
+conflict dialog keeps the typed value; Arabic right to left with the
+arrow keys mirrored and the pinned columns at the right, `lang` and
+`dir` set before the application's script runs, US$ read in its own
+order, and tabular Arabic-Indic digits; no sideways page scroll at 1280
+and 375 px in every language, and at 375 px every column reachable and
+editable, with an axe scan in each language; the header staying put
+while the page scrolls under it, and the page's and the grid's
+scrollbars drawn in Stoa's tokens.
 Screen readers were not tested by hand.
 
 ## Measurements
