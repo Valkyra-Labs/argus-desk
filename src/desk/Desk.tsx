@@ -22,6 +22,7 @@ import {
   Toolbar,
   groupShortcuts,
   isApplePlatform,
+  keepFocusInPlace,
   shortcutKeys,
   useShortcuts,
   useStoaFormat,
@@ -650,7 +651,15 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
           role="alert"
           title={t.chunkErrorTitle}
           action={
-            <Button onPress={() => load.chunkErrors.forEach((e) => engine.retry(e.index))}>{t.retry}</Button>
+            <Button
+              onPress={(e) => {
+                // The notice and its button go once the rows are in.
+                keepFocusInPlace(e.target);
+                load.chunkErrors.forEach((err) => engine.retry(err.index));
+              }}
+            >
+              {t.retry}
+            </Button>
           }
         >
           {load.chunkErrors.map((e) => t.chunkErrorRange(integer(e.start + 1), integer(e.start + e.count))).join(" ")}

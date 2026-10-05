@@ -27,6 +27,9 @@ test("a chunk that fails to load is named, and a retry fills it in", async ({ pa
   await alert.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByTestId("row-count")).toHaveText(ALL);
   await expect(alert).toHaveCount(0);
+  // The Retry button went with its notice; the focus did not fall to the
+  // page's body but moved on to the grid.
+  await expect(grid(page).locator('[data-cell="0:0"]')).toBeFocused();
 });
 
 test("without a worker the desk says so and still filters and sorts", async ({ page }) => {
