@@ -4,9 +4,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { WITH_COMMENTS, cell, expectNoSeriousViolations, grid, open } from "./helpers";
 
 const LANGS = {
-  en: { rows: "50,000 of 50,000 requests", empty: "0 of 50,000 requests", partial: "45,000 of 45,000 requests" },
+  en: { rows: "50,000 of 50,000 requests", empty: "0 of 50,000 requests", partial: "45,000 of 50,000 requests (5,000 did not load)" },
   ru: { rows: "50 000 заявок из 50 000", empty: "0 заявок из 50 000", partial: "45 000 заявок из 45 000" },
-  ar: { rows: "الطلبات: ٥٠٬٠٠٠ من ٥٠٬٠٠٠", empty: "الطلبات: ٠ من ٥٠٬٠٠٠", partial: "الطلبات: ٤٥٬٠٠٠ من ٤٥٬٠٠٠" },
+  ar: { rows: "الطلبات: ٥٠٬٠٠٠ من ٥٠٬٠٠٠", empty: "الطلبات: ٠ من ٥٠٬٠٠٠", partial: "الطلبات: ٤٥٬٠٠٠ من ٥٠٬٠٠٠ (لم يُحمَّل: ٥٬٠٠٠)" },
 } as const;
 
 for (const [lang, words] of Object.entries(LANGS)) {

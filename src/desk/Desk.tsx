@@ -73,6 +73,7 @@ import { DeskEngine, type QueryResult } from "../data/engine";
 import { POOLS } from "../data/query";
 import type { Lang, Strings } from "../i18n";
 import { buildColumns, cellValueText, editErrorText, makeFormats } from "./columns";
+import { countText } from "./counts";
 import { ColumnsSheet, ConflictDialog, SaveViewDialog, type ConflictView } from "./dialogs";
 import { afterPaint, record, recordFirstRows } from "./metrics";
 import { PerfPanel } from "./PerfPanel";
@@ -637,7 +638,13 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
         </ChipRow>
         <div className="desk__row desk__status">
           <p className="desk__count" data-testid="row-count">
-            {t.shownOf(integer(shownCount), integer(load.loadedRows), shownCount)}
+            {countText(t, integer, {
+              shown: result ? shownCount : null,
+              total: store.size,
+              loaded: load.loadedRows,
+              loading: load.loading,
+              failed: load.chunkErrors.reduce((n, e) => n + e.count, 0),
+            })}
           </p>
           {snap.busy && result && <span className="muted">{t.updating}</span>}
           {anyFilter && (

@@ -63,6 +63,10 @@ export type Strings = {
   searchHint: string;
   clearFilters: string;
   shownOf: (shown: string, total: string, n: number) => string;
+  countLoading: string;
+  /** In brackets after the count. */
+  countPending: (count: string) => string;
+  countFailed: (count: string) => string;
   updating: string;
 
   density: string;
@@ -216,6 +220,9 @@ const en: Strings = {
   searchHint: "ID, client, owner, tags, comment or author",
   clearFilters: "Clear filters",
   shownOf: (shown, total, n) => `${shown} of ${total} ${n === 1 ? "request" : "requests"}`,
+  countLoading: "Loading requests",
+  countPending: (count) => `(${count} still loading)`,
+  countFailed: (count) => `(${count} did not load)`,
   updating: "Updating",
 
   density: "Density",
@@ -370,6 +377,9 @@ const ruStrings: Strings = {
   searchHint: "Номер, клиент, ответственный, теги, комментарий или автор",
   clearFilters: "Сбросить фильтры",
   shownOf: (shown, total, n) => `${shown} ${ru(n, "заявка", "заявки", "заявок")} из ${total}`,
+  countLoading: "Загрузка заявок",
+  countPending: (count) => `(ещё загружается: ${count})`,
+  countFailed: (count) => `(не загружено: ${count})`,
   updating: "Обновление",
 
   density: "Плотность",
@@ -524,6 +534,9 @@ const ar: Strings = {
   searchHint: "المعرّف أو العميل أو المسؤول أو الوسوم أو التعليق أو المنشئ",
   clearFilters: "امسح عوامل التصفية",
   shownOf: (shown, total) => `الطلبات: ${shown} من ${total}`,
+  countLoading: "جارٍ تحميل الطلبات",
+  countPending: (count) => `(قيد التحميل: ${count})`,
+  countFailed: (count) => `(لم يُحمَّل: ${count})`,
   updating: "جارٍ التحديث",
 
   density: "الكثافة",

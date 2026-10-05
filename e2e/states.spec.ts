@@ -12,6 +12,7 @@ test("while the worker loads, the grid shows its loading state and the progress"
   await open(page, "", "");
   await expect(grid(page)).toHaveAttribute("aria-busy", "true");
   await expect(page.getByRole("progressbar", { name: "Generating requests" })).toBeVisible();
+  await expect(page.getByTestId("row-count")).toHaveText("Loading requests");
   await expectNoSeriousViolations(page, "loading");
   release();
   await expect(page.getByTestId("row-count")).toHaveText(ALL, { timeout: 15_000 });
@@ -20,7 +21,7 @@ test("while the worker loads, the grid shows its loading state and the progress"
 });
 
 test("a chunk that fails to load is named, and a retry fills it in", async ({ page }) => {
-  await open(page, "failChunk=3", "45,000 of 45,000 requests");
+  await open(page, "failChunk=3", "45,000 of 50,000 requests (5,000 did not load)");
   const alert = page.getByRole("alert").filter({ hasText: "Some requests did not load" });
   await expect(alert).toContainText("Rows 15,001 to 20,000 are missing.");
   await expectNoSeriousViolations(page, "error");
