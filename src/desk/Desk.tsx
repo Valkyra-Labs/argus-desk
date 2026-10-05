@@ -395,11 +395,18 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     });
   };
 
+  // The bulk bar closes with its selection; the focus, on its Apply or
+  // Clear selection, goes back to the grid's active cell first.
+  const closeBulk = () => {
+    focusGrid();
+    setSelection(new Set());
+  };
+
   const applyBulk = () => {
     if (selectedRows.length === 0 || !canBulk(role)) return;
     const res = history.current.setStatus(store, selectedRows, bulkStatus, Date.now());
     const skipped = res.rejected.length;
-    setSelection(new Set());
+    closeBulk();
     if (!res.entry) {
       toasts.add({ tone: "warning", text: t.bulkSkipped(integer(skipped)), timeout: 6000 });
       return;
@@ -668,7 +675,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
           ) : (
             <p className="muted">{t.bulkNeedsManager}</p>
           )}
-          <Button variant="ghost" onPress={() => setSelection(new Set())}>{t.clearSelection}</Button>
+          <Button variant="ghost" onPress={closeBulk}>{t.clearSelection}</Button>
         </section>
       )}
 

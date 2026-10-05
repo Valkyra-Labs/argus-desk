@@ -155,11 +155,31 @@ test("a bulk change on a keyboard selection can be undone from its toast", async
   await bulk.getByRole("button", { name: "Apply" }).click();
   for (const r of [0, 1, 2]) await expect(cell(page, r, 5)).toHaveText("Closed");
   await expect(bulk).toBeHidden();
+  // The bar and its Apply are gone; the focus goes back to the grid's
+  // active cell, not to the page's body.
+  await expect(cell(page, 2, 1)).toBeFocused();
   const toast = toasts(page).getByRole("alertdialog").or(toasts(page).locator(".stoa-toast")).filter({ hasText: "set on 3 requests" });
   await expect(toast).toContainText("Status “Closed” set on 3 requests.");
   await toast.getByRole("button", { name: "Undo" }).click();
   for (const [r, text] of before.entries()) await expect(cell(page, r, 5)).toHaveText(text!);
   await expect(toasts(page)).toContainText("Undone on 3 requests.");
+});
+
+test("after the bulk bar closes, by Apply or by Clear selection, the focus is in the grid", async ({ page }) => {
+  await open(page);
+  await cell(page, 1, 0).locator("input").click();
+  const bulk = page.getByRole("region", { name: "Bulk change" });
+  await bulk.getByRole("button", { name: "Clear selection" }).click();
+  await expect(bulk).toBeHidden();
+  await expect(cell(page, 1, 0)).toBeFocused();
+  await cell(page, 4, 0).locator("input").click();
+  await bulk.getByRole("button", { name: "Apply" }).click();
+  await expect(bulk).toBeHidden();
+  await expect(cell(page, 4, 0)).toBeFocused();
+  // Undo by keyboard from there keeps it.
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(toasts(page)).toContainText("Undone on 1 request.");
+  await expect(cell(page, 4, 0)).toBeFocused();
 });
 
 test("the operator role sees fewer regions, no margins, no bulk changes or export", async ({ page }) => {
