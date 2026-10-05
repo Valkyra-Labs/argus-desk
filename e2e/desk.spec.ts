@@ -344,8 +344,11 @@ test("views: a preset, a saved view that survives a reload, a link, and deletion
   await page.getByRole("button", { name: "Delete view" }).click();
   const confirm = page.getByRole("alertdialog", { name: "Delete the view “Urgent and low”?" });
   await confirm.getByRole("button", { name: "Delete view" }).click();
-  // The desk goes back to the view it opens on.
+  // The desk goes back to the view it opens on; the focus, on the Delete
+  // view button that went with the saved view, moves on to the next
+  // action rather than to the page's body.
   await expect(page.getByTestId("row-count")).toHaveText("30,927 of 50,000 requests");
+  await expect(page.getByRole("toolbar", { name: "Actions" }).getByRole("button", { name: "Columns" })).toBeFocused();
   await expect(page.getByRole("button", { name: /View$/ })).toContainText("Needs action");
   await page.getByRole("button", { name: /View$/ }).click();
   await expect(page.getByRole("option", { name: "Urgent and low" })).toHaveCount(0);
