@@ -125,10 +125,20 @@ test("a colleague's change to the cell being edited opens a conflict dialog", as
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId("conflict-mine")).toHaveText("My note");
   await expect(dialog.getByTestId("conflict-theirs")).toHaveText(/^Colleague's edit \d+$/);
+  // Escape does not decide: the dialog stays, with the typed value, and
+  // says why.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("conflict-mine")).toHaveText("My note");
+  await expect(dialog.getByRole("alert")).toContainText("Your value is not saved yet. “Use mine” saves it; “Keep theirs” discards it.");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Use mine" }).click();
   await expect(dialog).toBeHidden();
   await expect(cell(page, 3, 9)).toHaveText("My note");
   await expect(toasts(page)).toContainText("Z-000004: your value was saved.");
+  // The focus is back on the cell that was edited.
+  await expect(cell(page, 3, 9)).toBeFocused();
 
   // The other way: keep theirs.
   await focusCell(page, 4, 9);
@@ -139,6 +149,7 @@ test("a colleague's change to the cell being edited opens a conflict dialog", as
   const theirs = (await dialog.getByTestId("conflict-theirs").textContent())!;
   await dialog.getByRole("button", { name: "Keep theirs" }).click();
   await expect(cell(page, 4, 9)).toHaveText(theirs);
+  await expect(cell(page, 4, 9)).toBeFocused();
 });
 
 test("a bulk change on a keyboard selection can be undone from its toast", async ({ page }) => {

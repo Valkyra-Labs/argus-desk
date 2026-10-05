@@ -106,6 +106,7 @@ export type Strings = {
   started: string;
   keepTheirs: string;
   useMine: string;
+  conflictUndecided: string;
   keptTheirs: (id: string) => string;
   usedMine: (id: string) => string;
   colleagueEditing: (id: string, column: string, value: string) => string;
@@ -258,6 +259,7 @@ const en: Strings = {
   started: "When you started",
   keepTheirs: "Keep theirs",
   useMine: "Use mine",
+  conflictUndecided: "Your value is not saved yet. “Use mine” saves it; “Keep theirs” discards it.",
   keptTheirs: (id) => `${id}: the colleague’s value was kept.`,
   usedMine: (id) => `${id}: your value was saved.`,
   colleagueEditing: (id, column, value) => `A colleague changed the cell you are editing (${id}, ${column}) to “${value}”.`,
@@ -411,6 +413,7 @@ const ruStrings: Strings = {
   started: "Когда вы начали",
   keepTheirs: "Оставить их",
   useMine: "Сохранить моё",
+  conflictUndecided: "Ваше значение ещё не сохранено. «Сохранить моё» сохранит его, «Оставить их» отбросит.",
   keptTheirs: (id) => `${id}: оставлено значение коллеги.`,
   usedMine: (id) => `${id}: сохранено ваше значение.`,
   colleagueEditing: (id, column, value) => `Коллега изменил ячейку, которую вы редактируете (${id}, ${column}), на «${value}».`,
@@ -564,6 +567,7 @@ const ar: Strings = {
   started: "عند بدئك",
   keepTheirs: "أبقِ قيمته",
   useMine: "استخدم قيمتي",
+  conflictUndecided: "لم تُحفظ قيمتك بعد. «استخدم قيمتي» يحفظها، و«أبقِ قيمته» يتجاهلها.",
   keptTheirs: (id) => `${id}: بقيت قيمة الزميل.`,
   usedMine: (id) => `${id}: حُفظت قيمتك.`,
   colleagueEditing: (id, column, value) => `غيّر زميل الخلية التي تحرّرها (${id}، ${column}) إلى «${value}».`,

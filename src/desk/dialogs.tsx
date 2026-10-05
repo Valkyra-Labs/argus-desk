@@ -21,6 +21,8 @@ export type ConflictView = {
   started: string;
   /** Why "use mine" could not be saved, if it was refused. */
   error: string | null;
+  /** Escape or Close was pressed: the dialog says that nothing is decided. */
+  dismissed: boolean;
 };
 
 export function ConflictDialog({
@@ -28,17 +30,21 @@ export function ConflictDialog({
   t,
   onKeepTheirs,
   onUseMine,
+  onDismiss,
 }: {
   conflict: ConflictView | null;
   t: Strings;
   onKeepTheirs: () => void;
   onUseMine: () => void;
+  /** Escape or Close: the dialog stays open, so the typed value is not
+   * lost to a key that usually means "cancel". */
+  onDismiss: () => void;
 }) {
   return (
     <Dialog
       isOpen={conflict !== null}
       onOpenChange={(open) => {
-        if (!open) onKeepTheirs();
+        if (!open) onDismiss();
       }}
       isDismissable={false}
       title={t.conflictTitle}
@@ -65,6 +71,11 @@ export function ConflictDialog({
           {conflict.error && (
             <Callout tone="negative" role="alert">
               {conflict.error}
+            </Callout>
+          )}
+          {conflict.dismissed && !conflict.error && (
+            <Callout tone="warning" role="alert">
+              {t.conflictUndecided}
             </Callout>
           )}
         </div>

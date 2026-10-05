@@ -86,7 +86,7 @@ const BULK_STATUSES = [1, 3, 4, 6];
 let keys: string[] = [];
 const rowKey = (i: number): string => keys[i] ?? rowId(i);
 
-type Conflict = { row: number; col: EditColumn; mine: string; base: CellValue; theirs: CellValue; error: string | null };
+type Conflict = { row: number; col: EditColumn; mine: string; base: CellValue; theirs: CellValue; error: string | null; dismissed: boolean };
 
 function createEngine(config: UrlConfig): DeskEngine {
   return new DeskEngine({
@@ -301,7 +301,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     if (s && s.row === row && s.col === column) {
       const found = detectConflict(store, s);
       if (found) {
-        setConflict({ row, col: column, mine: value, base: s.base, theirs: found.theirs, error: null });
+        setConflict({ row, col: column, mine: value, base: s.base, theirs: found.theirs, error: null, dismissed: false });
         return;
       }
     }
@@ -318,10 +318,24 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
         : conflict.mine.trim() || t.emptyComment,
     started: cellValueText(conflict.base, lang, t),
     error: conflict.error,
+    dismissed: conflict.dismissed,
+  };
+  // Once the dialog has gone, the focus goes back to the edited cell: the
+  // editor that had it before the dialog is gone too.
+  const refocusGrid = useRef(false);
+  useEffect(() => {
+    if (conflict !== null || !refocusGrid.current) return;
+    refocusGrid.current = false;
+    const frame = requestAnimationFrame(focusGrid);
+    return () => cancelAnimationFrame(frame);
+  }, [conflict]); // eslint-disable-line react-hooks/exhaustive-deps
+  const closeConflict = () => {
+    refocusGrid.current = true;
+    setConflict(null);
   };
   const keepTheirs = () => {
     if (!conflict) return;
-    setConflict(null);
+    closeConflict();
     toasts.add({ tone: "info", text: t.keptTheirs(rowId(conflict.row)), timeout: 5000 });
   };
   const useMine = () => {
@@ -329,9 +343,12 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     const error = applyEdit(conflict.row, conflict.col, conflict.mine);
     if (error) setConflict({ ...conflict, error });
     else {
-      setConflict(null);
+      closeConflict();
       toasts.add({ tone: "positive", text: t.usedMine(rowId(conflict.row)), timeout: 5000 });
     }
+  };
+  const dismissConflict = () => {
+    if (conflict && !conflict.dismissed) setConflict({ ...conflict, dismissed: true });
   };
 
   // The simulated colleague.
@@ -735,7 +752,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
         headers={labels.columns}
         t={t}
       />
-      <ConflictDialog conflict={conflictView} t={t} onKeepTheirs={keepTheirs} onUseMine={useMine} />
+      <ConflictDialog conflict={conflictView} t={t} onKeepTheirs={keepTheirs} onUseMine={useMine} onDismiss={dismissConflict} />
     </div>
   );
 }
