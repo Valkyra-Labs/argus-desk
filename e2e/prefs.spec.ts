@@ -122,6 +122,25 @@ test("Arabic: digits in amounts and chip counts are tabular, so a column of them
   }
 });
 
+test("lang and dir are set before the first paint, from the link or the last visit", async ({ page }) => {
+  // The application's script never arrives: what the page shows comes
+  // from the document alone.
+  await page.route(/\/assets\/index-[^/]*\.js$/, () => new Promise(() => {}));
+  const html = page.locator("html");
+  await page.goto("/?lang=ar", { waitUntil: "commit" });
+  await expect(html).toHaveAttribute("dir", "rtl");
+  await expect(html).toHaveAttribute("lang", "ar");
+  await page.evaluate(() => localStorage.setItem("argus-desk.lang", "ru"));
+  await page.goto("/", { waitUntil: "commit" });
+  await expect(html).toHaveAttribute("lang", "ru");
+  await expect(html).toHaveAttribute("dir", "ltr");
+  // A link's language wins over the stored one; an unknown one is ignored.
+  await page.goto("/?lang=ar", { waitUntil: "commit" });
+  await expect(html).toHaveAttribute("dir", "rtl");
+  await page.goto("/?lang=xx", { waitUntil: "commit" });
+  await expect(html).toHaveAttribute("lang", "ru");
+});
+
 test("the theme and language can be chosen with storage blocked", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "localStorage", {
