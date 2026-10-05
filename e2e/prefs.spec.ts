@@ -97,6 +97,31 @@ test("Arabic: a US dollar amount reads US$, not $US", async ({ page }) => {
   expect(x.u).toBeLessThan(x.dollar);
 });
 
+test("Arabic: digits in amounts and chip counts are tabular, so a column of them lines up", async ({ page }) => {
+  await open(page, "lang=ar", "الطلبات: ٥٠٬٠٠٠ من ٥٠٬٠٠٠");
+  const widths = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const measure = (selector: string) => {
+      const probe = document.createElement("span");
+      probe.className = "stoa-data-grid__text";
+      document.querySelector(selector)!.append(probe);
+      const width = (text: string) => {
+        probe.textContent = text;
+        return probe.getBoundingClientRect().width;
+      };
+      // Load the face for these digits, then measure.
+      const result = [width("١١١١١١"), width("٠٠٠٠٠٠"), width("٨٨٨٨٨٨")];
+      probe.remove();
+      return result;
+    };
+    return { amount: measure('[data-cell="0:4"]'), chip: measure(".stoa-filter-chip__count") };
+  });
+  for (const [where, [ones, zeros, eights]] of Object.entries(widths)) {
+    expect(Math.abs(ones! - zeros!), where).toBeLessThan(0.5);
+    expect(Math.abs(ones! - eights!), where).toBeLessThan(0.5);
+  }
+});
+
 test("the theme and language can be chosen with storage blocked", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "localStorage", {
