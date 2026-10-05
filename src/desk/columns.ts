@@ -65,7 +65,7 @@ const WIDTHS: Record<string, number> = {
   owner: 168,
   region: 144,
   priority: 104,
-  sla: 104,
+  sla: 128,
   tags: 184,
   comment: 280,
   channel: 112,

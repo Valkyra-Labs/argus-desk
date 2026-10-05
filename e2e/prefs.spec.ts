@@ -150,6 +150,18 @@ test("lang and dir are set before the first paint, from the link or the last vis
   await expect(html).toHaveAttribute("lang", "ru");
 });
 
+test("the headers of the view the desk opens on fit their columns in every language", async ({ page }) => {
+  for (const lang of ["en", "ru", "ar"]) {
+    await page.goto(`/?lang=${lang}&colleague=off`);
+    await expect(page.getByRole("grid")).not.toHaveAttribute("aria-busy");
+    await page.evaluate(() => document.fonts.ready);
+    const clipped = await page.locator(".stoa-data-grid__row--head .stoa-data-grid__text").evaluateAll((spans) =>
+      spans.filter((s) => s.scrollWidth > s.clientWidth).map((s) => s.textContent),
+    );
+    expect(clipped, lang).toEqual([]);
+  }
+});
+
 test("the theme and language can be chosen with storage blocked", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "localStorage", {
