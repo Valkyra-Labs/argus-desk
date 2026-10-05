@@ -77,6 +77,26 @@ test("Arabic: right to left, Arabic-Indic digits, Arabic data, pinned columns at
   await expect(page.getByTestId("row-count")).toHaveText("50,000 of 50,000 requests");
 });
 
+test("Arabic: a US dollar amount reads US$, not $US", async ({ page }) => {
+  await open(page, "lang=ar", "الطلبات: ٥٠٬٠٠٠ من ٥٠٬٠٠٠");
+  // Z-000002 is in US dollars. Where each character is drawn, from the
+  // left: U, S, then $ when the symbol keeps its own order.
+  const amount = page.locator('[data-cell="1:4"]');
+  await expect(amount).toContainText("US$");
+  const x = await amount.evaluate((cell) => {
+    const node = cell.querySelector(".stoa-data-grid__text")!.firstChild!;
+    const text = node.textContent!;
+    const at = (i: number) => {
+      const range = document.createRange();
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      return range.getBoundingClientRect().x;
+    };
+    return { u: at(text.indexOf("U")), dollar: at(text.indexOf("$")) };
+  });
+  expect(x.u).toBeLessThan(x.dollar);
+});
+
 test("the theme and language can be chosen with storage blocked", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "localStorage", {
