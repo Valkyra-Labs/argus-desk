@@ -34,6 +34,22 @@ test("the desk opens on the requests that need action, with their SLA, the least
   await expect(page.getByRole("option").first()).toHaveText("Needs action");
 });
 
+test("the demo's own controls sit apart from the desk's, and say what the simulated colleague does", async ({ page }) => {
+  await open(page, "colleague=40");
+  const demo = page.getByRole("region", { name: "About this demo" });
+  await expect(demo).toContainText("A simulated colleague edits one about every 40 seconds; edit the same cell to see a conflict.");
+  await expect(demo.getByRole("radio", { name: "Operator" })).toBeVisible();
+  await expect(demo.getByRole("button", { name: "Colleague’s edit" })).toBeVisible();
+  const actions = page.getByRole("toolbar", { name: "Actions" });
+  await expect(actions.getByRole("button", { name: "Colleague’s edit" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "View" }).getByRole("radio", { name: "Operator" })).toHaveCount(0);
+  await demo.getByRole("button", { name: "Colleague’s edit" }).click();
+  await expect(toasts(page)).toContainText("A colleague set Status");
+  // Switched off by the link, the demo says so.
+  await open(page, "colleague=off");
+  await expect(page.getByRole("region", { name: "About this demo" })).toContainText("The simulated colleague is off on this page");
+});
+
 test("a status chip filters by its count, and chips combine", async ({ page }) => {
   await open(page);
   const approved = page.getByRole("button", { name: /^Approved \d/ });

@@ -31,7 +31,9 @@ A desk for 50,000 service requests in one grid, keyboard first.
   characters, a rejected request needs one.
 - **Edit conflicts**: a simulated colleague edits rows now and then
   (`?colleague=off` stops it, `?colleague=N` sets the mean interval in
-  seconds, the "Colleague's edit" button or C makes one now). When the
+  seconds, the "Colleague's edit" button or C makes one now). The demo's
+  own controls (the role and the colleague's edit) sit in a strip of
+  their own above the desk, which says what the colleague does. When the
   colleague changes the cell you are editing, saving opens a dialog with
   both values and the one you started from.
 - **CSV export** of the current view, its columns and order, at most

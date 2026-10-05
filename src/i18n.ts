@@ -116,6 +116,10 @@ export type Strings = {
   colleagueEditing: (id: string, column: string, value: string) => string;
   colleagueChanged: (id: string, column: string, value: string) => string;
   simulateColleague: string;
+  demoTitle: string;
+  demoData: (total: string) => string;
+  demoColleague: (seconds: string) => string;
+  demoColleagueOff: string;
 
   exportCsv: string;
   exported: (count: string, n: number) => string;
@@ -272,6 +276,10 @@ const en: Strings = {
   colleagueEditing: (id, column, value) => `A colleague changed the cell you are editing (${id}, ${column}) to “${value}”.`,
   colleagueChanged: (id, column, value) => `A colleague set ${column} of ${id} to “${value}”.`,
   simulateColleague: "Colleague’s edit",
+  demoTitle: "About this demo",
+  demoData: (total) => `Demo: ${total} generated requests.`,
+  demoColleague: (seconds) => `A simulated colleague edits one about every ${seconds} seconds; edit the same cell to see a conflict.`,
+  demoColleagueOff: "The simulated colleague is off on this page; “Colleague’s edit” makes one change.",
 
   exportCsv: "Export CSV",
   exported: (count, n) => `Exported ${count} ${n === 1 ? "row" : "rows"}.`,
@@ -429,6 +437,10 @@ const ruStrings: Strings = {
   colleagueEditing: (id, column, value) => `Коллега изменил ячейку, которую вы редактируете (${id}, ${column}), на «${value}».`,
   colleagueChanged: (id, column, value) => `Коллега изменил поле «${column}» заявки ${id} на «${value}».`,
   simulateColleague: "Правка коллеги",
+  demoTitle: "Об этой демонстрации",
+  demoData: (total) => `Демонстрация: ${total} сгенерированных заявок.`,
+  demoColleague: (seconds) => `Имитируемый коллега меняет одну из них примерно раз в ${seconds} с; измените ту же ячейку, чтобы увидеть конфликт.`,
+  demoColleagueOff: "Имитируемый коллега на этой странице выключен; «Правка коллеги» вносит одну правку.",
 
   exportCsv: "Выгрузить CSV",
   exported: (count, n) => `Выгружено: ${count} ${ru(n, "строка", "строки", "строк")}.`,
@@ -586,6 +598,10 @@ const ar: Strings = {
   colleagueEditing: (id, column, value) => `غيّر زميل الخلية التي تحرّرها (${id}، ${column}) إلى «${value}».`,
   colleagueChanged: (id, column, value) => `غيّر زميل حقل «${column}» في ${id} إلى «${value}».`,
   simulateColleague: "تعديل زميل",
+  demoTitle: "عن هذا العرض التوضيحي",
+  demoData: (total) => `عرض توضيحي: ${total} طلب مولَّد.`,
+  demoColleague: (seconds) => `يعدّل زميل افتراضي أحدها كل ${seconds} ثانية تقريبًا؛ حرّر الخلية نفسها لترى تعارضًا.`,
+  demoColleagueOff: "الزميل الافتراضي متوقف في هذه الصفحة؛ «تعديل زميل» يُجري تعديلًا واحدًا.",
 
   exportCsv: "صدّر ملف CSV",
   exported: (count) => `الصفوف المصدّرة: ${count}.`,

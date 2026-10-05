@@ -528,6 +528,27 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
 
   return (
     <div className="desk">
+      {/* What only the demo has: generated data, a simulated colleague and
+          a role switch instead of a sign-in. Apart from the desk's own
+          controls, and saying what the colleague does. */}
+      <section className="desk__demo" aria-label={t.demoTitle}>
+        <p>
+          {t.demoData(integer(store.size))}{" "}
+          {config.colleagueSeconds === null ? t.demoColleagueOff : t.demoColleague(integer(config.colleagueSeconds))}
+        </p>
+        <ChoiceGroup<Role>
+          label={t.role}
+          size="small"
+          value={role}
+          onChange={changeRole}
+          choices={[
+            { id: "operator", label: t.roles.operator },
+            { id: "manager", label: t.roles.manager },
+          ]}
+        />
+        <Button onPress={simulate}>{t.simulateColleague}</Button>
+      </section>
+
       <section className="desk__bar" aria-label={t.view}>
         <div className="desk__row">
           <div className="desk__view">
@@ -543,16 +564,6 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
             />
             {dirty && <Tag tone="warning" size="small">{t.viewModified}</Tag>}
           </div>
-          <ChoiceGroup<Role>
-            label={t.role}
-            size="small"
-            value={role}
-            onChange={changeRole}
-            choices={[
-              { id: "operator", label: t.roles.operator },
-              { id: "manager", label: t.roles.manager },
-            ]}
-          />
           <ChoiceGroup<Density>
             label={t.density}
             size="small"
@@ -577,7 +588,6 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
               {t.exportCsv}
             </Button>
           )}
-          <Button variant="ghost" onPress={simulate}>{t.simulateColleague}</Button>
           <Button variant="ghost" onPress={() => setDialog("shortcuts")}>{t.shortcuts}</Button>
         </Toolbar>
       </section>

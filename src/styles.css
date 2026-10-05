@@ -23,6 +23,14 @@ body { margin: 0; }
 
 .desk { display: grid; gap: var(--stoa-space-3); min-inline-size: 0; }
 .desk > * { min-inline-size: 0; }
+/* The demo's own controls, set apart from the desk's. */
+.desk__demo {
+  display: flex; flex-wrap: wrap; align-items: end; gap: var(--stoa-space-2) var(--stoa-space-4);
+  padding: var(--stoa-space-2) var(--stoa-space-3);
+  border: 1px dashed var(--stoa-color-border-strong); border-radius: var(--stoa-radius-md);
+  background: var(--stoa-color-surface-sunken);
+}
+.desk__demo p { margin: 0; flex: 1 1 24rem; align-self: center; }
 .desk__bar, .desk__filters { display: grid; gap: var(--stoa-space-3); min-inline-size: 0; }
 .desk__row { display: flex; flex-wrap: wrap; align-items: end; gap: var(--stoa-space-3) var(--stoa-space-4); min-inline-size: 0; }
 .desk__view { display: flex; flex-wrap: wrap; align-items: end; gap: var(--stoa-space-2); }
