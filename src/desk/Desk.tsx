@@ -580,7 +580,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
             }}
           />
         </div>
-        <ChipRow label={t.statusGroup}>
+        <ChipRow>
           <FilterChipGroup<number>
             label={t.statusGroup}
             size="small"
@@ -589,7 +589,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
             onChange={(status) => setFilters({ status })}
           />
         </ChipRow>
-        <ChipRow label={t.priorityGroup}>
+        <ChipRow>
           <FilterChipGroup<number>
             label={t.priorityGroup}
             size="small"
@@ -601,7 +601,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
             {t.slaBreached}
           </FilterChip>
         </ChipRow>
-        <ChipRow label={t.regionGroup}>
+        <ChipRow>
           <FilterChipGroup<number>
             label={t.regionGroup}
             size="small"
@@ -770,15 +770,8 @@ const GridView = memo(function GridView({ label, rows, columns, sort, selection,
   );
 });
 
-/** A filter group with its name shown before it. The group carries the
- * same name for assistive technology, so the shown one is hidden from it. */
-function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="chip-row">
-      <span className="chip-row__label" aria-hidden="true">
-        {label}
-      </span>
-      {children}
-    </div>
-  );
+/** A filter group, which shows its own name above its chips, with any
+ * chip that goes with it. */
+function ChipRow({ children }: { children: React.ReactNode }) {
+  return <div className="chip-row">{children}</div>;
 }
