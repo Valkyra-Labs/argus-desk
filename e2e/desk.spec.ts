@@ -113,6 +113,41 @@ test("inline edits are validated, saved and announced", async ({ page }) => {
   await expect(toasts(page)).toContainText("Undone on 1 request.");
 });
 
+test("a mouse edits too: a double click opens the editor, a click picks the value", async ({ page }) => {
+  await open(page, `view=${WITH_COMMENTS}`);
+  const before = await cell(page, 2, 5).textContent();
+  const next = before === "In review" ? "Closed" : "In review";
+  await cell(page, 2, 5).dblclick();
+  const list = grid(page).getByRole("listbox", { name: "Status" });
+  await expect(list).toBeVisible();
+  await list.getByRole("option", { name: next }).click();
+  await expect(list).toBeHidden();
+  await expect(cell(page, 2, 5)).toHaveText(next);
+
+  await cell(page, 2, 9).dblclick();
+  const input = grid(page).getByRole("textbox", { name: "Comment" });
+  await expect(input).toBeFocused();
+  await input.fill("Edited with the mouse");
+  // Leaving the editor for another cell saves a valid value.
+  await cell(page, 5, 2).click();
+  await expect(input).toBeHidden();
+  await expect(cell(page, 2, 9)).toHaveText("Edited with the mouse");
+  await expect(cell(page, 5, 2)).toBeFocused();
+});
+
+test("an editor opened with the mouse also meets a colleague's change with the conflict dialog", async ({ page }) => {
+  await open(page, `view=${WITH_COMMENTS}&colleague=1`);
+  await cell(page, 6, 9).dblclick();
+  const input = grid(page).getByRole("textbox", { name: "Comment" });
+  await input.fill("Mouse note");
+  await expect(toasts(page)).toContainText("A colleague changed the cell you are editing (Z-000007, Comment)", { timeout: 10_000 });
+  await input.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Changed while you were editing" });
+  await expect(dialog.getByTestId("conflict-mine")).toHaveText("Mouse note");
+  await dialog.getByRole("button", { name: "Use mine" }).click();
+  await expect(cell(page, 6, 9)).toHaveText("Mouse note");
+});
+
 test("a colleague's change to the cell being edited opens a conflict dialog", async ({ page }) => {
   await open(page, `view=${WITH_COMMENTS}&colleague=1`);
   await focusCell(page, 3, 9);

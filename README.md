@@ -24,7 +24,7 @@ A desk for 50,000 service requests in one grid, keyboard first.
   has no bulk changes or export; a manager sees everything.
 - **Bulk changes** on the selection (Space, Shift with the arrows, Ctrl or
   Cmd with A), undone from the toast or with Ctrl or Cmd with Z.
-- **Inline edits** of status and comment (Enter or F2), checked before
+- **Inline edits** of status and comment (Enter, F2 or a double click), checked before
   they are saved: an approval needs a comment, a comment has at most 200
   characters, a rejected request needs one.
 - **Edit conflicts**: a simulated colleague edits rows now and then
