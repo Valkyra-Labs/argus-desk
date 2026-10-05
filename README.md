@@ -39,6 +39,9 @@ A desk for 50,000 service requests in one grid, keyboard first.
 - **CSV export** of the current view, its columns and order, at most
   5,000 rows.
 - **Columns**: show, hide and reorder them; ID and client stay pinned.
+- **Narrow screens** (below 40rem, a phone): no column is pinned, so the
+  grid scrolls sideways to every column, and the filter groups fold into
+  one line above the grid.
 - **Shortcuts**: `?` lists them, `/` goes to the search, G to the grid, X
   clears the filters, S saves the view, E exports.
 

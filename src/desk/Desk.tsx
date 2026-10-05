@@ -8,6 +8,7 @@ import {
   Callout,
   ChoiceGroup,
   DataGrid,
+  Disclosure,
   EmptyState,
   FilterChip,
   FilterChipGroup,
@@ -41,6 +42,7 @@ import {
   OPERATOR_REGIONS,
   PRESET_VIEWS,
   REGION_COUNT,
+  activeFilterCount,
   applyRemoteEdit,
   beginEdit,
   canBulk,
@@ -74,6 +76,7 @@ import { POOLS } from "../data/query";
 import type { Lang, Strings } from "../i18n";
 import { buildColumns, cellValueText, editErrorText, makeFormats } from "./columns";
 import { countText } from "./counts";
+import { useNarrow } from "./narrow";
 import { ColumnsSheet, ConflictDialog, SaveViewDialog, type ConflictView } from "./dialogs";
 import { afterPaint, record, recordFirstRows } from "./metrics";
 import { PerfPanel } from "./PerfPanel";
@@ -175,9 +178,10 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   }, [snap.result]);
 
   const ids = useMemo(() => visibleColumns(view, role), [view.columns, role]); // eslint-disable-line react-hooks/exhaustive-deps
+  const narrow = useNarrow();
   const columns = useMemo(
-    () => buildColumns(ids, { store, lang, t, formats, editable: canEdit(role) }),
-    [ids, store, lang, t, formats, role],
+    () => buildColumns(ids, { store, lang, t, formats, editable: canEdit(role), pin: !narrow }),
+    [ids, store, lang, t, formats, role, narrow],
   );
 
   const announce = (text: string) => setAnnouncement(text);
@@ -526,6 +530,41 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   const hidden = hiddenForRole(view, role);
   const shownCount = result?.index.length ?? 0;
 
+  const chipGroups = (
+    <>
+      <ChipRow>
+        <FilterChipGroup<number>
+          label={t.statusGroup}
+          size="small"
+          chips={labels.status.map((label, i) => ({ id: i, label, count: facets?.status[i] }))}
+          value={filters.status}
+          onChange={(status) => setFilters({ status })}
+        />
+      </ChipRow>
+      <ChipRow>
+        <FilterChipGroup<number>
+          label={t.priorityGroup}
+          size="small"
+          chips={labels.priority.map((label, i) => ({ id: i, label, count: facets?.priority[i] }))}
+          value={filters.priority}
+          onChange={(priority) => setFilters({ priority })}
+        />
+        <FilterChip size="small" isSelected={filters.slaBreached} onChange={(on) => setFilters({ slaBreached: on })} count={facets?.slaBreached}>
+          {t.slaBreached}
+        </FilterChip>
+      </ChipRow>
+      <ChipRow>
+        <FilterChipGroup<number>
+          label={t.regionGroup}
+          size="small"
+          chips={regions.map((i) => ({ id: i, label: pools.regions[i] ?? "", count: facets?.region[i] }))}
+          value={filters.regions.filter((r) => regions.includes(r))}
+          onChange={(regions) => setFilters({ regions })}
+        />
+      </ChipRow>
+    </>
+  );
+
   return (
     <div className="desk">
       {/* What only the demo has: generated data, a simulated colleague and
@@ -604,36 +643,14 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
             }}
           />
         </div>
-        <ChipRow>
-          <FilterChipGroup<number>
-            label={t.statusGroup}
-            size="small"
-            chips={labels.status.map((label, i) => ({ id: i, label, count: facets?.status[i] }))}
-            value={filters.status}
-            onChange={(status) => setFilters({ status })}
-          />
-        </ChipRow>
-        <ChipRow>
-          <FilterChipGroup<number>
-            label={t.priorityGroup}
-            size="small"
-            chips={labels.priority.map((label, i) => ({ id: i, label, count: facets?.priority[i] }))}
-            value={filters.priority}
-            onChange={(priority) => setFilters({ priority })}
-          />
-          <FilterChip size="small" isSelected={filters.slaBreached} onChange={(on) => setFilters({ slaBreached: on })} count={facets?.slaBreached}>
-            {t.slaBreached}
-          </FilterChip>
-        </ChipRow>
-        <ChipRow>
-          <FilterChipGroup<number>
-            label={t.regionGroup}
-            size="small"
-            chips={regions.map((i) => ({ id: i, label: pools.regions[i] ?? "", count: facets?.region[i] }))}
-            value={filters.regions.filter((r) => regions.includes(r))}
-            onChange={(regions) => setFilters({ regions })}
-          />
-        </ChipRow>
+        {narrow ? (
+          // On a narrow screen the chip groups fold away above the grid.
+          <Disclosure summary={t.filtersSummary(integer(activeFilterCount(filters)), activeFilterCount(filters))}>
+            {chipGroups}
+          </Disclosure>
+        ) : (
+          chipGroups
+        )}
         <div className="desk__row desk__status">
           <p className="desk__count" data-testid="row-count">
             {countText(t, integer, {
@@ -651,6 +668,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
             </Button>
           )}
         </div>
+        {narrow && <p className="muted desk__hint">{t.narrowHint}</p>}
       </section>
 
       {role === "operator" && (
@@ -754,6 +772,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
         columns={view.columns}
         onChange={(next) => patchView({ columns: next })}
         role={role}
+        pinStart={!narrow}
         headers={labels.columns}
         t={t}
       />

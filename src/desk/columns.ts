@@ -107,11 +107,13 @@ export type ColumnContext = {
   formats: Formats;
   /** Editors for status and comment. */
   editable: boolean;
+  /** Pin ID and client at the start; off on a narrow screen. */
+  pin?: boolean;
 };
 
-export function buildColumns(ids: readonly string[], { store, lang, t, formats, editable }: ColumnContext): DataGridColumn<number>[] {
+export function buildColumns(ids: readonly string[], { store, lang, t, formats, editable, pin = true }: ColumnContext): DataGridColumn<number>[] {
   const { pools, labels } = POOLS[lang];
-  const pinned = new Set<string>(PINNED_COLUMNS);
+  const pinned = new Set<string>(pin ? PINNED_COLUMNS : []);
   const columns: DataGridColumn<number>[] = [];
   for (const id of ids) {
     const spec = COLUMN_BY_ID.get(id);

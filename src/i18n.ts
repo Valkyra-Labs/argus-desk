@@ -62,6 +62,8 @@ export type Strings = {
   search: string;
   searchHint: string;
   clearFilters: string;
+  /** The fold of the filter groups on a narrow screen. */
+  filtersSummary: (active: string, n: number) => string;
   shownOf: (shown: string, total: string, n: number) => string;
   countLoading: string;
   /** In brackets after the count. */
@@ -77,6 +79,8 @@ export type Strings = {
   columnsShown: string;
   columnsOrder: string;
   columnsPinned: string;
+  columnsUnpinned: string;
+  narrowHint: string;
   columnHiddenForRole: string;
   done: string;
 
@@ -223,6 +227,7 @@ const en: Strings = {
   search: "Search",
   searchHint: "ID, client, owner, tags, comment or author",
   clearFilters: "Clear filters",
+  filtersSummary: (active, n) => (n === 0 ? "Filters" : `Filters: ${active} on`),
   shownOf: (shown, total, n) => `${shown} of ${total} ${n === 1 ? "request" : "requests"}`,
   countLoading: "Loading requests",
   countPending: (count) => `(${count} still loading)`,
@@ -237,6 +242,8 @@ const en: Strings = {
   columnsShown: "Shown columns",
   columnsOrder: "Order",
   columnsPinned: "ID and client stay pinned at the start.",
+  columnsUnpinned: "On a narrow screen no column is pinned, so the grid scrolls sideways to every one.",
+  narrowHint: "Scroll the grid sideways for the other columns.",
   columnHiddenForRole: "Not available to operators",
   done: "Done",
 
@@ -384,6 +391,7 @@ const ruStrings: Strings = {
   search: "Поиск",
   searchHint: "Номер, клиент, ответственный, теги, комментарий или автор",
   clearFilters: "Сбросить фильтры",
+  filtersSummary: (active, n) => (n === 0 ? "Фильтры" : `Фильтры: включено ${active}`),
   shownOf: (shown, total, n) => `${shown} ${ru(n, "заявка", "заявки", "заявок")} из ${total}`,
   countLoading: "Загрузка заявок",
   countPending: (count) => `(ещё загружается: ${count})`,
@@ -398,6 +406,8 @@ const ruStrings: Strings = {
   columnsShown: "Показанные столбцы",
   columnsOrder: "Порядок",
   columnsPinned: "Номер и клиент всегда закреплены в начале.",
+  columnsUnpinned: "На узком экране столбцы не закреплены, и таблица прокручивается вбок до любого из них.",
+  narrowHint: "Остальные столбцы видны при прокрутке таблицы вбок.",
   columnHiddenForRole: "Недоступно оператору",
   done: "Готово",
 
@@ -545,6 +555,7 @@ const ar: Strings = {
   search: "البحث",
   searchHint: "المعرّف أو العميل أو المسؤول أو الوسوم أو التعليق أو المنشئ",
   clearFilters: "امسح عوامل التصفية",
+  filtersSummary: (active, n) => (n === 0 ? "عوامل التصفية" : `عوامل التصفية: المفعّل ${active}`),
   shownOf: (shown, total) => `الطلبات: ${shown} من ${total}`,
   countLoading: "جارٍ تحميل الطلبات",
   countPending: (count) => `(قيد التحميل: ${count})`,
@@ -559,6 +570,8 @@ const ar: Strings = {
   columnsShown: "الأعمدة المعروضة",
   columnsOrder: "الترتيب",
   columnsPinned: "يبقى المعرّف والعميل مثبّتين في البداية.",
+  columnsUnpinned: "على الشاشة الضيقة لا يُثبَّت أي عمود، فيُمرَّر الجدول جانبيًا إلى أي منها.",
+  narrowHint: "مرّر الجدول جانبيًا لرؤية بقية الأعمدة.",
   columnHiddenForRole: "غير متاح لموظف التشغيل",
   done: "تم",
 

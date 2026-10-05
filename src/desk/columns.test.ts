@@ -14,6 +14,11 @@ describe("grid columns", () => {
     expect(columns.filter((c) => c.editor).map((c) => c.id)).toEqual(["status", "comment"]);
   });
 
+  it("pin nothing when asked not to, for a narrow screen", () => {
+    const columns = buildColumns(COLUMN_IDS, { store, lang: "en", t: strings.en, formats: makeFormats("en"), editable: true, pin: false });
+    expect(columns.some((c) => c.pinned)).toBe(false);
+  });
+
   it("hide the margin columns from operators", () => {
     const ids = visibleColumns({ columns: [...COLUMN_IDS] }, "operator");
     expect(ids.some((id) => MARGIN_COLUMNS.includes(id))).toBe(false);

@@ -160,6 +160,7 @@ export function ColumnsSheet({
   columns,
   onChange,
   role,
+  pinStart,
   headers,
   t,
 }: {
@@ -169,6 +170,8 @@ export function ColumnsSheet({
   columns: readonly string[];
   onChange: (columns: string[]) => void;
   role: Role;
+  /** Whether ID and client are pinned (not on a narrow screen). */
+  pinStart: boolean;
   headers: Readonly<Record<string, string>>;
   t: Strings;
 }) {
@@ -188,7 +191,7 @@ export function ColumnsSheet({
       )}
     >
       <div className="columns-sheet">
-        <p className="muted">{t.columnsPinned}</p>
+        <p className="muted">{pinStart ? t.columnsPinned : t.columnsUnpinned}</p>
         <CheckboxGroup
           label={t.columnsShown}
           value={chosen}

@@ -36,6 +36,7 @@ body { margin: 0; }
 .desk__view { display: flex; flex-wrap: wrap; align-items: end; gap: var(--stoa-space-2); }
 .desk__search { max-inline-size: calc(var(--stoa-space-12) * 8); }
 .desk__status { align-items: center; }
+.desk__hint { margin: 0; }
 .desk__count { margin: 0; font-variant-numeric: tabular-nums; }
 .desk__bulk {
   display: flex; flex-wrap: wrap; align-items: end; gap: var(--stoa-space-3);
@@ -47,6 +48,12 @@ body { margin: 0; }
 /* The grid is sized in rows of the current density, so it fits the main
    region whatever the window; it scrolls inside itself. */
 .desk__grid-box { block-size: calc(var(--stoa-density-row-height) * 22); }
+/* On a narrow screen the filter groups fold away (their fold keeps the
+   groups' spacing), and the grid leaves room to scroll the page past it. */
+.desk__filters .stoa-disclosure__content { display: grid; gap: var(--stoa-space-3); }
+@media (max-width: 40rem) {
+  .desk__grid-box { block-size: min(calc(var(--stoa-density-row-height) * 22), 70svh); }
+}
 .perf p { margin-block: var(--stoa-space-2); }
 
 .conflict { display: grid; gap: var(--stoa-space-3); }
