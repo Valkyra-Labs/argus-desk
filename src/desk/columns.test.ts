@@ -31,6 +31,16 @@ describe("grid columns", () => {
     expect(header!.header).toBe("Статус");
   });
 
+  it("set dates, with their month names, in the sans face; numbers stay in the numeric face", () => {
+    const columns = buildColumns(["date", "updatedAt", "amount", "sla"], { store, lang: "ar", t: strings.ar, formats: makeFormats("ar"), editable: true });
+    expect(columns.map((c) => [c.id, c.mono])).toEqual([
+      ["date", false],
+      ["updatedAt", false],
+      ["amount", undefined],
+      ["sla", undefined],
+    ]);
+  });
+
   it("isolate a currency symbol with Latin letters in Arabic, and nothing else", () => {
     const usd = makeFormats("ar").money[1]!;
     expect(formatMoney(usd, 1454, true)).toBe(usd.format(1454).replace("US$", "\u2066US$\u2069"));

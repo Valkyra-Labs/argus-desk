@@ -148,7 +148,8 @@ export function buildColumns(ids: readonly string[], { store, lang, t, formats, 
       case "date":
       case "updatedAt": {
         const data = id === "date" ? store.date : store.updatedAt;
-        columns.push({ ...base, accessor: (i) => data[i] ?? 0, format: (v) => formats.date.format(Number(v)) });
+        // A date reads with its month's name: words, so the sans face.
+        columns.push({ ...base, accessor: (i) => data[i] ?? 0, format: (v) => formats.date.format(Number(v)), mono: false });
         break;
       }
       case "amount":
