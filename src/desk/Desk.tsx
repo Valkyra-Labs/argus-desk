@@ -80,6 +80,10 @@ import { PerfPanel } from "./PerfPanel";
 import { readSavedViews, readUrlConfig, setParam, writeSavedViews, type UrlConfig } from "./settings";
 
 const SEED = 20260904;
+/** The view the desk opens on: the requests that need someone's action,
+ * with their SLA. First in the list of views. */
+const START_VIEW = PRESET_VIEWS.find((v) => v.name === "action") ?? DEFAULT_VIEW;
+const PRESETS = [START_VIEW, ...PRESET_VIEWS.filter((v) => v !== START_VIEW)];
 /** Statuses offered for a bulk change. */
 const BULK_STATUSES = [1, 3, 4, 6];
 
@@ -111,7 +115,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   const integer = useCallback((n: number) => formats.integer.format(n), [formats]);
   const decimal = useCallback((n: number) => formats.one.format(n), [formats]);
 
-  const [view, setView] = useState<View>(() => config.view ?? DEFAULT_VIEW);
+  const [view, setView] = useState<View>(() => config.view ?? START_VIEW);
   const [dirty, setDirty] = useState(false);
   const [savedViews, setSavedViews] = useState<View[]>(readSavedViews);
   const [role, setRole] = useState<Role>(config.role);
@@ -191,7 +195,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     setSelection(new Set());
     announce(t.viewApplied(viewLabel(next)));
   };
-  const allViews = [...PRESET_VIEWS, ...savedViews];
+  const allViews = [...PRESETS, ...savedViews];
   const viewOptions = allViews.map((v) => ({ id: v.name, label: viewLabel(v) }));
   if (!allViews.some((v) => v.name === view.name)) viewOptions.push({ id: view.name || "-", label: viewLabel(view) });
   const isSaved = savedViews.some((v) => v.name === view.name);
@@ -210,7 +214,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     const list = removeView(savedViews, name);
     setSavedViews(list);
     writeSavedViews(list);
-    applyView(DEFAULT_VIEW);
+    applyView(START_VIEW);
     toasts.add({ tone: "info", text: t.viewDeleted(name), timeout: 5000 });
   };
   const copyLink = () => {

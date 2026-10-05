@@ -9,6 +9,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import { gzipSync } from "node:zlib";
 import { chromium } from "@playwright/test";
+import { DEFAULT_VIEW, serializeView } from "argus-grid";
 
 const BASE = "http://localhost:4178";
 const RUNS = Number(process.env.RUNS ?? 5);
@@ -35,8 +36,9 @@ async function waitForServer() {
   throw new Error("vite preview did not start");
 }
 
+// On all 50,000 requests (the desk opens on the ones that need action).
 async function openDesk(page, query = "colleague=off") {
-  await page.goto(`${BASE}/?${query}`);
+  await page.goto(`${BASE}/?${query}&view=${serializeView(DEFAULT_VIEW)}`);
   await page.getByTestId("row-count").filter({ hasText: "50,000 of 50,000 requests" }).waitFor({ timeout: 20_000 });
 }
 

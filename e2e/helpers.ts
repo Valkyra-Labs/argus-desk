@@ -7,11 +7,16 @@ export const ALL = "50,000 of 50,000 requests";
 /** The default view with the comment column, as a `view` parameter. */
 export const WITH_COMMENTS = serializeView({ ...DEFAULT_VIEW, name: "", columns: [...DEFAULT_VIEW.columns, "comment"] });
 
-/** Opens the desk with the colleague off unless asked for, and waits for
- * every row. */
+/** The built-in "All requests" view, as a `view` parameter. */
+export const ALL_REQUESTS = serializeView(DEFAULT_VIEW);
+
+/** Opens the desk with the colleague off unless asked for, on all the
+ * requests unless a view is given (the desk itself starts on the ones that
+ * need action), and waits for every row. */
 export async function open(page: Page, query = "", rows = ALL) {
   const params = new URLSearchParams(query);
   if (!params.has("colleague")) params.set("colleague", "off");
+  if (!params.has("view")) params.set("view", ALL_REQUESTS);
   await page.goto(`/?${params}`);
   if (rows) await expect(page.getByTestId("row-count")).toHaveText(rows, { timeout: 15_000 });
 }

@@ -16,6 +16,24 @@ test("50,000 requests reach the grid through the worker", async ({ page }) => {
   await expect(page.locator(".perf")).toContainText("Worker");
 });
 
+test("the desk opens on the requests that need action, with their SLA, the least time first", async ({ page }) => {
+  await page.goto("/?colleague=off");
+  // New, in progress, awaiting the client and in review.
+  await expect(page.getByTestId("row-count")).toHaveText("30,927 of 50,000 requests", { timeout: 15_000 });
+  await expect(page.getByRole("button", { name: /View$/ })).toContainText("Needs action");
+  const sla = page.getByRole("columnheader", { name: "SLA, h" });
+  await expect(sla).toHaveAttribute("aria-sort", "ascending");
+  const headers = await page.getByRole("columnheader").allTextContents();
+  expect(headers.slice(1, 5)).toEqual(["ID", "Client", "Status", "SLA, h"]);
+  for (const name of ["Approved", "Rejected", "Closed"]) {
+    await expect(page.getByRole("button", { name: new RegExp(`^${name} \\d`) })).toHaveAttribute("aria-pressed", "false");
+  }
+  await expect(page.getByRole("button", { name: /^New \d/ })).toHaveAttribute("aria-pressed", "true");
+  // It is first in the list of views.
+  await page.getByRole("button", { name: /View$/ }).click();
+  await expect(page.getByRole("option").first()).toHaveText("Needs action");
+});
+
 test("a status chip filters by its count, and chips combine", async ({ page }) => {
   await open(page);
   const approved = page.getByRole("button", { name: /^Approved \d/ });
@@ -310,7 +328,9 @@ test("views: a preset, a saved view that survives a reload, a link, and deletion
   await page.getByRole("button", { name: "Delete view" }).click();
   const confirm = page.getByRole("alertdialog", { name: "Delete the view “Urgent and low”?" });
   await confirm.getByRole("button", { name: "Delete view" }).click();
-  await expect(page.getByTestId("row-count")).toHaveText(ALL);
+  // The desk goes back to the view it opens on.
+  await expect(page.getByTestId("row-count")).toHaveText("30,927 of 50,000 requests");
+  await expect(page.getByRole("button", { name: /View$/ })).toContainText("Needs action");
   await page.getByRole("button", { name: /View$/ }).click();
   await expect(page.getByRole("option", { name: "Urgent and low" })).toHaveCount(0);
 });

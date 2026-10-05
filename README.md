@@ -18,8 +18,10 @@ A desk for 50,000 service requests in one grid, keyboard first.
 - **Filters with counts**: status, priority, SLA breached and region
   chips, each with the number of requests it would show, and a text search
   over ID, client, owner, tags, comment and author, marked in the cells.
-- **Views**: three built-in views, saved views kept in this browser, and
-  a link that carries the current view (`?view=`).
+- **Views**: four built-in views, saved views kept in this browser, and
+  a link that carries the current view (`?view=`). The desk opens on
+  "Needs action": the requests not yet approved, rejected or closed, with
+  their SLA hours, the least time first.
 - **Roles**: an operator sees three regions and no margin columns, and
   has no bulk changes or export; a manager sees everything.
 - **Bulk changes** on the selection (Space, Shift with the arrows, Ctrl or
