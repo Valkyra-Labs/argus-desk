@@ -187,6 +187,22 @@ test("a colleague's change to the cell being edited opens a conflict dialog", as
   await expect(cell(page, 4, 9)).toBeFocused();
 });
 
+test("the focus stays on the active cell while rows change under it", async ({ page }) => {
+  await open(page);
+  // Sorted by status, a colleague's status change moves rows around.
+  await page.getByRole("columnheader", { name: "Status" }).click();
+  await expect(page.getByRole("columnheader", { name: "Status" })).toHaveAttribute("aria-sort", "ascending");
+  await focusCell(page, 0, 1);
+  const id = await cell(page, 0, 1).textContent();
+  for (let k = 0; k < 4; k++) {
+    await page.keyboard.press("c");
+    await expect(toasts(page)).toContainText("A colleague set Status");
+  }
+  const focused = page.locator(":focus");
+  await expect(focused).toHaveAttribute("data-cell", /^\d+:1$/);
+  await expect(focused).toHaveText(id!);
+});
+
 test("a bulk change on a keyboard selection can be undone from its toast", async ({ page }) => {
   await open(page);
   const before = await Promise.all([0, 1, 2].map((r) => cell(page, r, 5).textContent()));

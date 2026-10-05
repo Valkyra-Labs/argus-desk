@@ -26,9 +26,9 @@ import {
   shortcutKeys,
   useShortcuts,
   useStoaFormat,
-  type DataGridCell,
   type DataGridColumn,
   type DataGridEdit,
+  type DataGridEditTarget,
   type DataGridSort,
   type Shortcut,
   type ShortcutGroup,
@@ -137,8 +137,9 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     engine.query({ criteria, sort: view.sort, lang });
   }, [engine, criteria, view.sort, lang]);
 
-  // While an editor is open the grid keeps the rows it had: its editor is
-  // tied to a row position, so new rows under it would retarget it.
+  // While an editor is open the grid keeps the rows it had: a colleague's
+  // change that moved the row out of the view would close the editor and
+  // drop what the person typed.
   const frozen = useRef<QueryResult | null>(null);
   const result = session ? frozen.current : snap.result;
   const shownResult = useRef(result);
@@ -242,39 +243,22 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   const facets = result?.facets;
   const regions = role === "operator" ? OPERATOR_REGIONS : Array.from({ length: REGION_COUNT }, (_, i) => i);
 
-  // Edits. The editor's session (the value it started from) is taken when
-  // focus enters the grid's editor; Stoa's DataGrid reports no edit start.
-  const active = useRef<DataGridCell>({ row: 0, column: 0 });
+  // Edits. An edit session (the value the editor started from) runs from
+  // the grid's edit start to its save or cancel.
   const searchBox = useRef<HTMLDivElement>(null);
   const gridBox = useRef<HTMLDivElement>(null);
   const focusGrid = () => gridBox.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus();
-  // New rows replace the row elements, and a focused cell goes with its
-  // row; the grid does not restore focus, so the desk puts it back on the
-  // active cell when the person was in the grid.
-  const gridFocused = useRef(false);
-  useLayoutEffect(() => {
-    if (gridFocused.current && (document.activeElement === document.body || document.activeElement === null)) focusGrid();
-  }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
   const sessionRef = useRef<EditSession | null>(null);
-  const columnAt = (gridColumn: number) => columns[gridColumn - 1]?.id;
-  const onGridFocus = (e: React.FocusEvent) => {
-    gridFocused.current = true;
-    if (sessionRef.current || !(e.target as HTMLElement).closest("[data-grid-editor]")) return;
-    const row = rows[active.current.row];
-    const col = columnAt(active.current.column);
-    if (row === undefined || (col !== "status" && col !== "comment")) return;
-    const s = beginEdit(store, row, col);
+  const onEditStart = ({ row, column }: DataGridEditTarget<number>) => {
+    if (column !== "status" && column !== "comment") return;
+    const s = beginEdit(store, row, column);
     sessionRef.current = s;
     frozen.current = shownResult.current;
     setSession(s);
   };
-  const onGridBlur = (e: React.FocusEvent) => {
-    if (e.relatedTarget && !gridBox.current?.contains(e.relatedTarget as Node)) gridFocused.current = false;
-    setTimeout(() => {
-      if (document.activeElement?.closest("[data-grid-editor]")) return;
-      sessionRef.current = null;
-      setSession(null);
-    }, 0);
+  const endSession = () => {
+    sessionRef.current = null;
+    setSession(null);
   };
 
   /** Saves an edit through the history; returns the refusal, if any. */
@@ -299,6 +283,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   const onEdit = ({ row, column, value }: DataGridEdit<number>) => {
     if (column !== "status" && column !== "comment") return;
     const s = sessionRef.current;
+    endSession();
     if (s && s.row === row && s.col === column) {
       const found = detectConflict(store, s);
       if (found) {
@@ -504,8 +489,8 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
 
   // The grid only renders again when what it shows changes; its handlers
   // reach the latest state through a ref.
-  const latest = useRef({ onEdit, mark, patchView });
-  latest.current = { onEdit, mark, patchView };
+  const latest = useRef({ onEdit, onEditStart, endSession, mark, patchView });
+  latest.current = { onEdit, onEditStart, endSession, mark, patchView };
   const gridHandlers = useMemo<GridHandlers>(
     () => ({
       onSortChange: (s) => {
@@ -513,10 +498,9 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
         latest.current.patchView({ sort: s ? { id: s.column, desc: s.direction === "descending" } : null });
       },
       onSelectionChange: setSelection,
-      onActiveCellChange: (cell) => {
-        active.current = cell;
-      },
       onEdit: (edit) => latest.current.onEdit(edit),
+      onEditStart: (target) => latest.current.onEditStart(target),
+      onEditCancel: () => latest.current.endSession(),
     }),
     [],
   );
@@ -712,7 +696,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
         </section>
       )}
 
-      <div className="desk__grid" data-density={density} ref={gridBox} onFocus={onGridFocus} onBlur={onGridBlur}>
+      <div className="desk__grid" data-density={density} ref={gridBox}>
         <GridView
           label={t.gridLabel}
           rows={rows}
@@ -767,8 +751,9 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
 type GridHandlers = {
   onSortChange: (sort: DataGridSort | null) => void;
   onSelectionChange: (keys: Set<string>) => void;
-  onActiveCellChange: (cell: DataGridCell) => void;
   onEdit: (edit: DataGridEdit<number>) => void;
+  onEditStart: (target: DataGridEditTarget<number>) => void;
+  onEditCancel: () => void;
 };
 
 type GridViewProps = {
@@ -800,8 +785,9 @@ const GridView = memo(function GridView({ label, rows, columns, sort, selection,
       selectionMode="multiple"
       selectedKeys={selection}
       onSelectionChange={handlers.onSelectionChange}
-      onActiveCellChange={handlers.onActiveCellChange}
       onEdit={handlers.onEdit}
+      onEditStart={handlers.onEditStart}
+      onEditCancel={handlers.onEditCancel}
       highlight={highlight}
       loading={loading}
       className="desk__grid-box"
