@@ -41,6 +41,19 @@ export function makeFormats(lang: Lang): Formats {
   };
 }
 
+/** An amount in its currency. In a right-to-left language a symbol with
+ * Latin letters ("US$") is isolated left to right: unisolated, its "$"
+ * takes the cell's direction and is drawn before the letters, "$US". The
+ * grid's cell takes a string, so the isolate is written into it (LRI and
+ * PDI) where a component would use Stoa's Ltr. */
+export function formatMoney(format: Intl.NumberFormat, value: number, rtl: boolean): string {
+  if (!rtl) return format.format(value);
+  return format
+    .formatToParts(value)
+    .map((p) => (p.type === "currency" && /[A-Za-z]/.test(p.value) ? `\u2066${p.value}\u2069` : p.value))
+    .join("");
+}
+
 /** Width in CSS pixels by column id; metrics share one width. */
 const WIDTHS: Record<string, number> = {
   id: 104,
@@ -52,7 +65,7 @@ const WIDTHS: Record<string, number> = {
   owner: 168,
   region: 144,
   priority: 104,
-  sla: 104,
+  sla: 128,
   tags: 184,
   comment: 280,
   channel: 112,
@@ -94,11 +107,13 @@ export type ColumnContext = {
   formats: Formats;
   /** Editors for status and comment. */
   editable: boolean;
+  /** Pin ID and client at the start; off on a narrow screen. */
+  pin?: boolean;
 };
 
-export function buildColumns(ids: readonly string[], { store, lang, t, formats, editable }: ColumnContext): DataGridColumn<number>[] {
+export function buildColumns(ids: readonly string[], { store, lang, t, formats, editable, pin = true }: ColumnContext): DataGridColumn<number>[] {
   const { pools, labels } = POOLS[lang];
-  const pinned = new Set<string>(PINNED_COLUMNS);
+  const pinned = new Set<string>(pin ? PINNED_COLUMNS : []);
   const columns: DataGridColumn<number>[] = [];
   for (const id of ids) {
     const spec = COLUMN_BY_ID.get(id);
@@ -135,14 +150,15 @@ export function buildColumns(ids: readonly string[], { store, lang, t, formats, 
       case "date":
       case "updatedAt": {
         const data = id === "date" ? store.date : store.updatedAt;
-        columns.push({ ...base, accessor: (i) => data[i] ?? 0, format: (v) => formats.date.format(Number(v)) });
+        // A date reads with its month's name: words, so the sans face.
+        columns.push({ ...base, accessor: (i) => data[i] ?? 0, format: (v) => formats.date.format(Number(v)), mono: false });
         break;
       }
       case "amount":
         columns.push({
           ...base,
           accessor: (i) => store.amount[i] ?? 0,
-          format: (v, i) => (formats.money[store.currency[i] ?? 0] ?? formats.integer).format(Number(v)),
+          format: (v, i) => formatMoney(formats.money[store.currency[i] ?? 0] ?? formats.integer, Number(v), lang === "ar"),
         });
         break;
       case "sla":

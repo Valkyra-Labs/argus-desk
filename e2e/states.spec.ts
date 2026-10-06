@@ -12,6 +12,7 @@ test("while the worker loads, the grid shows its loading state and the progress"
   await open(page, "", "");
   await expect(grid(page)).toHaveAttribute("aria-busy", "true");
   await expect(page.getByRole("progressbar", { name: "Generating requests" })).toBeVisible();
+  await expect(page.getByTestId("row-count")).toHaveText("Loading requests");
   await expectNoSeriousViolations(page, "loading");
   release();
   await expect(page.getByTestId("row-count")).toHaveText(ALL, { timeout: 15_000 });
@@ -20,13 +21,16 @@ test("while the worker loads, the grid shows its loading state and the progress"
 });
 
 test("a chunk that fails to load is named, and a retry fills it in", async ({ page }) => {
-  await open(page, "failChunk=3", "45,000 of 45,000 requests");
+  await open(page, "failChunk=3", "45,000 of 50,000 requests (5,000 did not load)");
   const alert = page.getByRole("alert").filter({ hasText: "Some requests did not load" });
   await expect(alert).toContainText("Rows 15,001 to 20,000 are missing.");
   await expectNoSeriousViolations(page, "error");
   await alert.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByTestId("row-count")).toHaveText(ALL);
   await expect(alert).toHaveCount(0);
+  // The Retry button went with its notice; the focus did not fall to the
+  // page's body but moved on to the grid.
+  await expect(grid(page).locator('[data-cell="0:0"]')).toBeFocused();
 });
 
 test("without a worker the desk says so and still filters and sorts", async ({ page }) => {

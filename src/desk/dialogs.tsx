@@ -21,6 +21,8 @@ export type ConflictView = {
   started: string;
   /** Why "use mine" could not be saved, if it was refused. */
   error: string | null;
+  /** Escape or Close was pressed: the dialog says that nothing is decided. */
+  dismissed: boolean;
 };
 
 export function ConflictDialog({
@@ -28,17 +30,21 @@ export function ConflictDialog({
   t,
   onKeepTheirs,
   onUseMine,
+  onDismiss,
 }: {
   conflict: ConflictView | null;
   t: Strings;
   onKeepTheirs: () => void;
   onUseMine: () => void;
+  /** Escape or Close: the dialog stays open, so the typed value is not
+   * lost to a key that usually means "cancel". */
+  onDismiss: () => void;
 }) {
   return (
     <Dialog
       isOpen={conflict !== null}
       onOpenChange={(open) => {
-        if (!open) onKeepTheirs();
+        if (!open) onDismiss();
       }}
       isDismissable={false}
       title={t.conflictTitle}
@@ -65,6 +71,11 @@ export function ConflictDialog({
           {conflict.error && (
             <Callout tone="negative" role="alert">
               {conflict.error}
+            </Callout>
+          )}
+          {conflict.dismissed && !conflict.error && (
+            <Callout tone="warning" role="alert">
+              {t.conflictUndecided}
             </Callout>
           )}
         </div>
@@ -149,6 +160,7 @@ export function ColumnsSheet({
   columns,
   onChange,
   role,
+  pinStart,
   headers,
   t,
 }: {
@@ -158,6 +170,8 @@ export function ColumnsSheet({
   columns: readonly string[];
   onChange: (columns: string[]) => void;
   role: Role;
+  /** Whether ID and client are pinned (not on a narrow screen). */
+  pinStart: boolean;
   headers: Readonly<Record<string, string>>;
   t: Strings;
 }) {
@@ -177,7 +191,7 @@ export function ColumnsSheet({
       )}
     >
       <div className="columns-sheet">
-        <p className="muted">{t.columnsPinned}</p>
+        <p className="muted">{pinStart ? t.columnsPinned : t.columnsUnpinned}</p>
         <CheckboxGroup
           label={t.columnsShown}
           value={chosen}

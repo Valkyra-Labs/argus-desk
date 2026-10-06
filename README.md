@@ -18,23 +18,30 @@ A desk for 50,000 service requests in one grid, keyboard first.
 - **Filters with counts**: status, priority, SLA breached and region
   chips, each with the number of requests it would show, and a text search
   over ID, client, owner, tags, comment and author, marked in the cells.
-- **Views**: three built-in views, saved views kept in this browser, and
-  a link that carries the current view (`?view=`).
+- **Views**: four built-in views, saved views kept in this browser, and
+  a link that carries the current view (`?view=`). The desk opens on
+  "Needs action": the requests not yet approved, rejected or closed, with
+  their SLA hours, the least time first.
 - **Roles**: an operator sees three regions and no margin columns, and
   has no bulk changes or export; a manager sees everything.
 - **Bulk changes** on the selection (Space, Shift with the arrows, Ctrl or
   Cmd with A), undone from the toast or with Ctrl or Cmd with Z.
-- **Inline edits** of status and comment (Enter or F2), checked before
+- **Inline edits** of status and comment (Enter, F2 or a double click), checked before
   they are saved: an approval needs a comment, a comment has at most 200
   characters, a rejected request needs one.
 - **Edit conflicts**: a simulated colleague edits rows now and then
   (`?colleague=off` stops it, `?colleague=N` sets the mean interval in
-  seconds, the "Colleague's edit" button or C makes one now). When the
+  seconds, the "Colleague's edit" button or C makes one now). The demo's
+  own controls (the role and the colleague's edit) sit in a strip of
+  their own above the desk, which says what the colleague does. When the
   colleague changes the cell you are editing, saving opens a dialog with
   both values and the one you started from.
 - **CSV export** of the current view, its columns and order, at most
   5,000 rows.
 - **Columns**: show, hide and reorder them; ID and client stay pinned.
+- **Narrow screens** (below 40rem, a phone): no column is pinned, so the
+  grid scrolls sideways to every column, and the filter groups fold into
+  one line above the grid.
 - **Shortcuts**: `?` lists them, `/` goes to the search, G to the grid, X
   clears the filters, S saves the view, E exports.
 
@@ -80,10 +87,17 @@ columns dialogs, no matches, loading, a partial load failure with the
 operator role; and on the conflict dialog with a toast in Arabic, dark.
 They also check: the main tasks by keyboard (grid moves, sorting from a
 header, editing and its errors, selecting rows, undo, the app
-shortcuts); Arabic right to left with the arrow keys mirrored and the
-pinned columns at the right; no sideways page scroll at 1280 and 375 px
-in every language; the header staying put while the page scrolls under
-it, and the page's and the grid's scrollbars drawn in Stoa's tokens.
+shortcuts) and editing with the mouse (a double click opens the editor);
+where the focus goes after a bulk change, a Retry, the conflict dialog
+and deleting a view (never to the page's body), and that Escape in the
+conflict dialog keeps the typed value; Arabic right to left with the
+arrow keys mirrored and the pinned columns at the right, `lang` and
+`dir` set before the application's script runs, US$ read in its own
+order, and tabular Arabic-Indic digits; no sideways page scroll at 1280
+and 375 px in every language, and at 375 px every column reachable and
+editable, with an axe scan in each language; the header staying put
+while the page scrolls under it, and the page's and the grid's
+scrollbars drawn in Stoa's tokens.
 Screen readers were not tested by hand.
 
 ## Measurements

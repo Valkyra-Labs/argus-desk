@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { COLUMN_IDS, MARGIN_COLUMNS, generateAll, isCommentBlank, visibleColumns, writeComment } from "argus-grid";
 import { strings } from "../i18n";
-import { buildColumns, makeFormats } from "./columns";
+import { buildColumns, formatMoney, makeFormats } from "./columns";
 import { readUrlConfig } from "./settings";
 
 const store = generateAll(20260904, 5_000);
@@ -12,6 +12,11 @@ describe("grid columns", () => {
     expect(columns).toHaveLength(30);
     expect(columns.filter((c) => c.pinned).map((c) => c.id)).toEqual(["id", "client"]);
     expect(columns.filter((c) => c.editor).map((c) => c.id)).toEqual(["status", "comment"]);
+  });
+
+  it("pin nothing when asked not to, for a narrow screen", () => {
+    const columns = buildColumns(COLUMN_IDS, { store, lang: "en", t: strings.en, formats: makeFormats("en"), editable: true, pin: false });
+    expect(columns.some((c) => c.pinned)).toBe(false);
   });
 
   it("hide the margin columns from operators", () => {
@@ -29,6 +34,24 @@ describe("grid columns", () => {
     }
     const [header] = buildColumns(["status"], { store, lang: "ru", t: strings.ru, formats: makeFormats("ru"), editable: true });
     expect(header!.header).toBe("Статус");
+  });
+
+  it("set dates, with their month names, in the sans face; numbers stay in the numeric face", () => {
+    const columns = buildColumns(["date", "updatedAt", "amount", "sla"], { store, lang: "ar", t: strings.ar, formats: makeFormats("ar"), editable: true });
+    expect(columns.map((c) => [c.id, c.mono])).toEqual([
+      ["date", false],
+      ["updatedAt", false],
+      ["amount", undefined],
+      ["sla", undefined],
+    ]);
+  });
+
+  it("isolate a currency symbol with Latin letters in Arabic, and nothing else", () => {
+    const usd = makeFormats("ar").money[1]!;
+    expect(formatMoney(usd, 1454, true)).toBe(usd.format(1454).replace("US$", "\u2066US$\u2069"));
+    const eur = makeFormats("ar").money[2]!;
+    expect(formatMoney(eur, 72, true)).toBe(eur.format(72));
+    expect(formatMoney(makeFormats("en").money[1]!, 1454, false)).toBe("$1,454");
   });
 
   it("refuse an approval without a comment and a comment over 200 characters, in the interface's words", () => {

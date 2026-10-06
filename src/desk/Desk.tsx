@@ -8,6 +8,7 @@ import {
   Callout,
   ChoiceGroup,
   DataGrid,
+  Disclosure,
   EmptyState,
   FilterChip,
   FilterChipGroup,
@@ -22,12 +23,13 @@ import {
   Toolbar,
   groupShortcuts,
   isApplePlatform,
+  keepFocusInPlace,
   shortcutKeys,
   useShortcuts,
   useStoaFormat,
-  type DataGridCell,
   type DataGridColumn,
   type DataGridEdit,
+  type DataGridEditTarget,
   type DataGridSort,
   type Shortcut,
   type ShortcutGroup,
@@ -40,6 +42,7 @@ import {
   OPERATOR_REGIONS,
   PRESET_VIEWS,
   REGION_COUNT,
+  activeFilterCount,
   applyRemoteEdit,
   beginEdit,
   canBulk,
@@ -72,12 +75,18 @@ import { DeskEngine, type QueryResult } from "../data/engine";
 import { POOLS } from "../data/query";
 import type { Lang, Strings } from "../i18n";
 import { buildColumns, cellValueText, editErrorText, makeFormats } from "./columns";
+import { countText } from "./counts";
+import { useNarrow } from "./narrow";
 import { ColumnsSheet, ConflictDialog, SaveViewDialog, type ConflictView } from "./dialogs";
 import { afterPaint, record, recordFirstRows } from "./metrics";
 import { PerfPanel } from "./PerfPanel";
 import { readSavedViews, readUrlConfig, setParam, writeSavedViews, type UrlConfig } from "./settings";
 
 const SEED = 20260904;
+/** The view the desk opens on: the requests that need someone's action,
+ * with their SLA. First in the list of views. */
+const START_VIEW = PRESET_VIEWS.find((v) => v.name === "action") ?? DEFAULT_VIEW;
+const PRESETS = [START_VIEW, ...PRESET_VIEWS.filter((v) => v !== START_VIEW)];
 /** Statuses offered for a bulk change. */
 const BULK_STATUSES = [1, 3, 4, 6];
 
@@ -85,7 +94,7 @@ const BULK_STATUSES = [1, 3, 4, 6];
 let keys: string[] = [];
 const rowKey = (i: number): string => keys[i] ?? rowId(i);
 
-type Conflict = { row: number; col: EditColumn; mine: string; base: CellValue; theirs: CellValue; error: string | null };
+type Conflict = { row: number; col: EditColumn; mine: string; base: CellValue; theirs: CellValue; error: string | null; dismissed: boolean };
 
 function createEngine(config: UrlConfig): DeskEngine {
   return new DeskEngine({
@@ -109,7 +118,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   const integer = useCallback((n: number) => formats.integer.format(n), [formats]);
   const decimal = useCallback((n: number) => formats.one.format(n), [formats]);
 
-  const [view, setView] = useState<View>(() => config.view ?? DEFAULT_VIEW);
+  const [view, setView] = useState<View>(() => config.view ?? START_VIEW);
   const [dirty, setDirty] = useState(false);
   const [savedViews, setSavedViews] = useState<View[]>(readSavedViews);
   const [role, setRole] = useState<Role>(config.role);
@@ -135,8 +144,9 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     engine.query({ criteria, sort: view.sort, lang });
   }, [engine, criteria, view.sort, lang]);
 
-  // While an editor is open the grid keeps the rows it had: its editor is
-  // tied to a row position, so new rows under it would retarget it.
+  // While an editor is open the grid keeps the rows it had: a colleague's
+  // change that moved the row out of the view would close the editor and
+  // drop what the person typed.
   const frozen = useRef<QueryResult | null>(null);
   const result = session ? frozen.current : snap.result;
   const shownResult = useRef(result);
@@ -168,9 +178,10 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   }, [snap.result]);
 
   const ids = useMemo(() => visibleColumns(view, role), [view.columns, role]); // eslint-disable-line react-hooks/exhaustive-deps
+  const narrow = useNarrow();
   const columns = useMemo(
-    () => buildColumns(ids, { store, lang, t, formats, editable: canEdit(role) }),
-    [ids, store, lang, t, formats, role],
+    () => buildColumns(ids, { store, lang, t, formats, editable: canEdit(role), pin: !narrow }),
+    [ids, store, lang, t, formats, role, narrow],
   );
 
   const announce = (text: string) => setAnnouncement(text);
@@ -188,7 +199,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     setSelection(new Set());
     announce(t.viewApplied(viewLabel(next)));
   };
-  const allViews = [...PRESET_VIEWS, ...savedViews];
+  const allViews = [...PRESETS, ...savedViews];
   const viewOptions = allViews.map((v) => ({ id: v.name, label: viewLabel(v) }));
   if (!allViews.some((v) => v.name === view.name)) viewOptions.push({ id: view.name || "-", label: viewLabel(view) });
   const isSaved = savedViews.some((v) => v.name === view.name);
@@ -207,7 +218,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     const list = removeView(savedViews, name);
     setSavedViews(list);
     writeSavedViews(list);
-    applyView(DEFAULT_VIEW);
+    applyView(START_VIEW);
     toasts.add({ tone: "info", text: t.viewDeleted(name), timeout: 5000 });
   };
   const copyLink = () => {
@@ -240,39 +251,22 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   const facets = result?.facets;
   const regions = role === "operator" ? OPERATOR_REGIONS : Array.from({ length: REGION_COUNT }, (_, i) => i);
 
-  // Edits. The editor's session (the value it started from) is taken when
-  // focus enters the grid's editor; Stoa's DataGrid reports no edit start.
-  const active = useRef<DataGridCell>({ row: 0, column: 0 });
+  // Edits. An edit session (the value the editor started from) runs from
+  // the grid's edit start to its save or cancel.
   const searchBox = useRef<HTMLDivElement>(null);
   const gridBox = useRef<HTMLDivElement>(null);
   const focusGrid = () => gridBox.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus();
-  // New rows replace the row elements, and a focused cell goes with its
-  // row; the grid does not restore focus, so the desk puts it back on the
-  // active cell when the person was in the grid.
-  const gridFocused = useRef(false);
-  useLayoutEffect(() => {
-    if (gridFocused.current && (document.activeElement === document.body || document.activeElement === null)) focusGrid();
-  }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
   const sessionRef = useRef<EditSession | null>(null);
-  const columnAt = (gridColumn: number) => columns[gridColumn - 1]?.id;
-  const onGridFocus = (e: React.FocusEvent) => {
-    gridFocused.current = true;
-    if (sessionRef.current || !(e.target as HTMLElement).closest("[data-grid-editor]")) return;
-    const row = rows[active.current.row];
-    const col = columnAt(active.current.column);
-    if (row === undefined || (col !== "status" && col !== "comment")) return;
-    const s = beginEdit(store, row, col);
+  const onEditStart = ({ row, column }: DataGridEditTarget<number>) => {
+    if (column !== "status" && column !== "comment") return;
+    const s = beginEdit(store, row, column);
     sessionRef.current = s;
     frozen.current = shownResult.current;
     setSession(s);
   };
-  const onGridBlur = (e: React.FocusEvent) => {
-    if (e.relatedTarget && !gridBox.current?.contains(e.relatedTarget as Node)) gridFocused.current = false;
-    setTimeout(() => {
-      if (document.activeElement?.closest("[data-grid-editor]")) return;
-      sessionRef.current = null;
-      setSession(null);
-    }, 0);
+  const endSession = () => {
+    sessionRef.current = null;
+    setSession(null);
   };
 
   /** Saves an edit through the history; returns the refusal, if any. */
@@ -297,10 +291,11 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   const onEdit = ({ row, column, value }: DataGridEdit<number>) => {
     if (column !== "status" && column !== "comment") return;
     const s = sessionRef.current;
+    endSession();
     if (s && s.row === row && s.col === column) {
       const found = detectConflict(store, s);
       if (found) {
-        setConflict({ row, col: column, mine: value, base: s.base, theirs: found.theirs, error: null });
+        setConflict({ row, col: column, mine: value, base: s.base, theirs: found.theirs, error: null, dismissed: false });
         return;
       }
     }
@@ -317,10 +312,24 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
         : conflict.mine.trim() || t.emptyComment,
     started: cellValueText(conflict.base, lang, t),
     error: conflict.error,
+    dismissed: conflict.dismissed,
+  };
+  // Once the dialog has gone, the focus goes back to the edited cell: the
+  // editor that had it before the dialog is gone too.
+  const refocusGrid = useRef(false);
+  useEffect(() => {
+    if (conflict !== null || !refocusGrid.current) return;
+    refocusGrid.current = false;
+    const frame = requestAnimationFrame(focusGrid);
+    return () => cancelAnimationFrame(frame);
+  }, [conflict]); // eslint-disable-line react-hooks/exhaustive-deps
+  const closeConflict = () => {
+    refocusGrid.current = true;
+    setConflict(null);
   };
   const keepTheirs = () => {
     if (!conflict) return;
-    setConflict(null);
+    closeConflict();
     toasts.add({ tone: "info", text: t.keptTheirs(rowId(conflict.row)), timeout: 5000 });
   };
   const useMine = () => {
@@ -328,9 +337,12 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     const error = applyEdit(conflict.row, conflict.col, conflict.mine);
     if (error) setConflict({ ...conflict, error });
     else {
-      setConflict(null);
+      closeConflict();
       toasts.add({ tone: "positive", text: t.usedMine(rowId(conflict.row)), timeout: 5000 });
     }
+  };
+  const dismissConflict = () => {
+    if (conflict && !conflict.dismissed) setConflict({ ...conflict, dismissed: true });
   };
 
   // The simulated colleague.
@@ -395,11 +407,18 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
     });
   };
 
+  // The bulk bar closes with its selection; the focus, on its Apply or
+  // Clear selection, goes back to the grid's active cell first.
+  const closeBulk = () => {
+    focusGrid();
+    setSelection(new Set());
+  };
+
   const applyBulk = () => {
     if (selectedRows.length === 0 || !canBulk(role)) return;
     const res = history.current.setStatus(store, selectedRows, bulkStatus, Date.now());
     const skipped = res.rejected.length;
-    setSelection(new Set());
+    closeBulk();
     if (!res.entry) {
       toasts.add({ tone: "warning", text: t.bulkSkipped(integer(skipped)), timeout: 6000 });
       return;
@@ -478,8 +497,8 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
 
   // The grid only renders again when what it shows changes; its handlers
   // reach the latest state through a ref.
-  const latest = useRef({ onEdit, mark, patchView });
-  latest.current = { onEdit, mark, patchView };
+  const latest = useRef({ onEdit, onEditStart, endSession, mark, patchView });
+  latest.current = { onEdit, onEditStart, endSession, mark, patchView };
   const gridHandlers = useMemo<GridHandlers>(
     () => ({
       onSortChange: (s) => {
@@ -487,10 +506,9 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
         latest.current.patchView({ sort: s ? { id: s.column, desc: s.direction === "descending" } : null });
       },
       onSelectionChange: setSelection,
-      onActiveCellChange: (cell) => {
-        active.current = cell;
-      },
       onEdit: (edit) => latest.current.onEdit(edit),
+      onEditStart: (target) => latest.current.onEditStart(target),
+      onEditCancel: () => latest.current.endSession(),
     }),
     [],
   );
@@ -512,8 +530,64 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
   const hidden = hiddenForRole(view, role);
   const shownCount = result?.index.length ?? 0;
 
+  const chipGroups = (
+    <>
+      <ChipRow>
+        <FilterChipGroup<number>
+          label={t.statusGroup}
+          size="small"
+          chips={labels.status.map((label, i) => ({ id: i, label, count: facets?.status[i] }))}
+          value={filters.status}
+          onChange={(status) => setFilters({ status })}
+        />
+      </ChipRow>
+      <ChipRow>
+        <FilterChipGroup<number>
+          label={t.priorityGroup}
+          size="small"
+          chips={labels.priority.map((label, i) => ({ id: i, label, count: facets?.priority[i] }))}
+          value={filters.priority}
+          onChange={(priority) => setFilters({ priority })}
+        />
+        <FilterChip size="small" isSelected={filters.slaBreached} onChange={(on) => setFilters({ slaBreached: on })} count={facets?.slaBreached}>
+          {t.slaBreached}
+        </FilterChip>
+      </ChipRow>
+      <ChipRow>
+        <FilterChipGroup<number>
+          label={t.regionGroup}
+          size="small"
+          chips={regions.map((i) => ({ id: i, label: pools.regions[i] ?? "", count: facets?.region[i] }))}
+          value={filters.regions.filter((r) => regions.includes(r))}
+          onChange={(regions) => setFilters({ regions })}
+        />
+      </ChipRow>
+    </>
+  );
+
   return (
     <div className="desk">
+      {/* What only the demo has: generated data, a simulated colleague and
+          a role switch instead of a sign-in. Apart from the desk's own
+          controls, and saying what the colleague does. */}
+      <section className="desk__demo" aria-label={t.demoTitle}>
+        <p>
+          {t.demoData(integer(store.size))}{" "}
+          {config.colleagueSeconds === null ? t.demoColleagueOff : t.demoColleague(integer(config.colleagueSeconds))}
+        </p>
+        <ChoiceGroup<Role>
+          label={t.role}
+          size="small"
+          value={role}
+          onChange={changeRole}
+          choices={[
+            { id: "operator", label: t.roles.operator },
+            { id: "manager", label: t.roles.manager },
+          ]}
+        />
+        <Button onPress={simulate}>{t.simulateColleague}</Button>
+      </section>
+
       <section className="desk__bar" aria-label={t.view}>
         <div className="desk__row">
           <div className="desk__view">
@@ -529,16 +603,6 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
             />
             {dirty && <Tag tone="warning" size="small">{t.viewModified}</Tag>}
           </div>
-          <ChoiceGroup<Role>
-            label={t.role}
-            size="small"
-            value={role}
-            onChange={changeRole}
-            choices={[
-              { id: "operator", label: t.roles.operator },
-              { id: "manager", label: t.roles.manager },
-            ]}
-          />
           <ChoiceGroup<Density>
             label={t.density}
             size="small"
@@ -563,7 +627,6 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
               {t.exportCsv}
             </Button>
           )}
-          <Button variant="ghost" onPress={simulate}>{t.simulateColleague}</Button>
           <Button variant="ghost" onPress={() => setDialog("shortcuts")}>{t.shortcuts}</Button>
         </Toolbar>
       </section>
@@ -580,39 +643,23 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
             }}
           />
         </div>
-        <ChipRow>
-          <FilterChipGroup<number>
-            label={t.statusGroup}
-            size="small"
-            chips={labels.status.map((label, i) => ({ id: i, label, count: facets?.status[i] }))}
-            value={filters.status}
-            onChange={(status) => setFilters({ status })}
-          />
-        </ChipRow>
-        <ChipRow>
-          <FilterChipGroup<number>
-            label={t.priorityGroup}
-            size="small"
-            chips={labels.priority.map((label, i) => ({ id: i, label, count: facets?.priority[i] }))}
-            value={filters.priority}
-            onChange={(priority) => setFilters({ priority })}
-          />
-          <FilterChip size="small" isSelected={filters.slaBreached} onChange={(on) => setFilters({ slaBreached: on })} count={facets?.slaBreached}>
-            {t.slaBreached}
-          </FilterChip>
-        </ChipRow>
-        <ChipRow>
-          <FilterChipGroup<number>
-            label={t.regionGroup}
-            size="small"
-            chips={regions.map((i) => ({ id: i, label: pools.regions[i] ?? "", count: facets?.region[i] }))}
-            value={filters.regions.filter((r) => regions.includes(r))}
-            onChange={(regions) => setFilters({ regions })}
-          />
-        </ChipRow>
+        {narrow ? (
+          // On a narrow screen the chip groups fold away above the grid.
+          <Disclosure summary={t.filtersSummary(integer(activeFilterCount(filters)), activeFilterCount(filters))}>
+            {chipGroups}
+          </Disclosure>
+        ) : (
+          chipGroups
+        )}
         <div className="desk__row desk__status">
           <p className="desk__count" data-testid="row-count">
-            {t.shownOf(integer(shownCount), integer(load.loadedRows), shownCount)}
+            {countText(t, integer, {
+              shown: result ? shownCount : null,
+              total: store.size,
+              loaded: load.loadedRows,
+              loading: load.loading,
+              failed: load.chunkErrors.reduce((n, e) => n + e.count, 0),
+            })}
           </p>
           {snap.busy && result && <span className="muted">{t.updating}</span>}
           {anyFilter && (
@@ -621,6 +668,7 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
             </Button>
           )}
         </div>
+        {narrow && <p className="muted desk__hint">{t.narrowHint}</p>}
       </section>
 
       {role === "operator" && (
@@ -643,7 +691,15 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
           role="alert"
           title={t.chunkErrorTitle}
           action={
-            <Button onPress={() => load.chunkErrors.forEach((e) => engine.retry(e.index))}>{t.retry}</Button>
+            <Button
+              onPress={(e) => {
+                // The notice and its button go once the rows are in.
+                keepFocusInPlace(e.target);
+                load.chunkErrors.forEach((err) => engine.retry(err.index));
+              }}
+            >
+              {t.retry}
+            </Button>
           }
         >
           {load.chunkErrors.map((e) => t.chunkErrorRange(integer(e.start + 1), integer(e.start + e.count))).join(" ")}
@@ -668,11 +724,11 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
           ) : (
             <p className="muted">{t.bulkNeedsManager}</p>
           )}
-          <Button variant="ghost" onPress={() => setSelection(new Set())}>{t.clearSelection}</Button>
+          <Button variant="ghost" onPress={closeBulk}>{t.clearSelection}</Button>
         </section>
       )}
 
-      <div className="desk__grid" data-density={density} ref={gridBox} onFocus={onGridFocus} onBlur={onGridBlur}>
+      <div className="desk__grid" data-density={density} ref={gridBox}>
         <GridView
           label={t.gridLabel}
           rows={rows}
@@ -716,10 +772,11 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
         columns={view.columns}
         onChange={(next) => patchView({ columns: next })}
         role={role}
+        pinStart={!narrow}
         headers={labels.columns}
         t={t}
       />
-      <ConflictDialog conflict={conflictView} t={t} onKeepTheirs={keepTheirs} onUseMine={useMine} />
+      <ConflictDialog conflict={conflictView} t={t} onKeepTheirs={keepTheirs} onUseMine={useMine} onDismiss={dismissConflict} />
     </div>
   );
 }
@@ -727,8 +784,9 @@ export function Desk({ lang, t }: { lang: Lang; t: Strings }) {
 type GridHandlers = {
   onSortChange: (sort: DataGridSort | null) => void;
   onSelectionChange: (keys: Set<string>) => void;
-  onActiveCellChange: (cell: DataGridCell) => void;
   onEdit: (edit: DataGridEdit<number>) => void;
+  onEditStart: (target: DataGridEditTarget<number>) => void;
+  onEditCancel: () => void;
 };
 
 type GridViewProps = {
@@ -760,8 +818,9 @@ const GridView = memo(function GridView({ label, rows, columns, sort, selection,
       selectionMode="multiple"
       selectedKeys={selection}
       onSelectionChange={handlers.onSelectionChange}
-      onActiveCellChange={handlers.onActiveCellChange}
       onEdit={handlers.onEdit}
+      onEditStart={handlers.onEditStart}
+      onEditCancel={handlers.onEditCancel}
       highlight={highlight}
       loading={loading}
       className="desk__grid-box"

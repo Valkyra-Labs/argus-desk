@@ -62,7 +62,13 @@ export type Strings = {
   search: string;
   searchHint: string;
   clearFilters: string;
+  /** The fold of the filter groups on a narrow screen. */
+  filtersSummary: (active: string, n: number) => string;
   shownOf: (shown: string, total: string, n: number) => string;
+  countLoading: string;
+  /** In brackets after the count. */
+  countPending: (count: string) => string;
+  countFailed: (count: string) => string;
   updating: string;
 
   density: string;
@@ -73,6 +79,8 @@ export type Strings = {
   columnsShown: string;
   columnsOrder: string;
   columnsPinned: string;
+  columnsUnpinned: string;
+  narrowHint: string;
   columnHiddenForRole: string;
   done: string;
 
@@ -106,11 +114,16 @@ export type Strings = {
   started: string;
   keepTheirs: string;
   useMine: string;
+  conflictUndecided: string;
   keptTheirs: (id: string) => string;
   usedMine: (id: string) => string;
   colleagueEditing: (id: string, column: string, value: string) => string;
   colleagueChanged: (id: string, column: string, value: string) => string;
   simulateColleague: string;
+  demoTitle: string;
+  demoData: (total: string) => string;
+  demoColleague: (seconds: string) => string;
+  demoColleagueOff: string;
 
   exportCsv: string;
   exported: (count: string, n: number) => string;
@@ -214,7 +227,11 @@ const en: Strings = {
   search: "Search",
   searchHint: "ID, client, owner, tags, comment or author",
   clearFilters: "Clear filters",
+  filtersSummary: (active, n) => (n === 0 ? "Filters" : `Filters: ${active} on`),
   shownOf: (shown, total, n) => `${shown} of ${total} ${n === 1 ? "request" : "requests"}`,
+  countLoading: "Loading requests",
+  countPending: (count) => `(${count} still loading)`,
+  countFailed: (count) => `(${count} did not load)`,
   updating: "Updating",
 
   density: "Density",
@@ -225,6 +242,8 @@ const en: Strings = {
   columnsShown: "Shown columns",
   columnsOrder: "Order",
   columnsPinned: "ID and client stay pinned at the start.",
+  columnsUnpinned: "On a narrow screen no column is pinned, so the grid scrolls sideways to every one.",
+  narrowHint: "Scroll the grid sideways for the other columns.",
   columnHiddenForRole: "Not available to operators",
   done: "Done",
 
@@ -258,11 +277,16 @@ const en: Strings = {
   started: "When you started",
   keepTheirs: "Keep theirs",
   useMine: "Use mine",
+  conflictUndecided: "Your value is not saved yet. “Use mine” saves it; “Keep theirs” discards it.",
   keptTheirs: (id) => `${id}: the colleague’s value was kept.`,
   usedMine: (id) => `${id}: your value was saved.`,
   colleagueEditing: (id, column, value) => `A colleague changed the cell you are editing (${id}, ${column}) to “${value}”.`,
   colleagueChanged: (id, column, value) => `A colleague set ${column} of ${id} to “${value}”.`,
   simulateColleague: "Colleague’s edit",
+  demoTitle: "About this demo",
+  demoData: (total) => `Demo: ${total} generated requests.`,
+  demoColleague: (seconds) => `A simulated colleague edits one about every ${seconds} seconds; edit the same cell to see a conflict.`,
+  demoColleagueOff: "The simulated colleague is off on this page; “Colleague’s edit” makes one change.",
 
   exportCsv: "Export CSV",
   exported: (count, n) => `Exported ${count} ${n === 1 ? "row" : "rows"}.`,
@@ -367,7 +391,11 @@ const ruStrings: Strings = {
   search: "Поиск",
   searchHint: "Номер, клиент, ответственный, теги, комментарий или автор",
   clearFilters: "Сбросить фильтры",
+  filtersSummary: (active, n) => (n === 0 ? "Фильтры" : `Фильтры: включено ${active}`),
   shownOf: (shown, total, n) => `${shown} ${ru(n, "заявка", "заявки", "заявок")} из ${total}`,
+  countLoading: "Загрузка заявок",
+  countPending: (count) => `(ещё загружается: ${count})`,
+  countFailed: (count) => `(не загружено: ${count})`,
   updating: "Обновление",
 
   density: "Плотность",
@@ -378,6 +406,8 @@ const ruStrings: Strings = {
   columnsShown: "Показанные столбцы",
   columnsOrder: "Порядок",
   columnsPinned: "Номер и клиент всегда закреплены в начале.",
+  columnsUnpinned: "На узком экране столбцы не закреплены, и таблица прокручивается вбок до любого из них.",
+  narrowHint: "Остальные столбцы видны при прокрутке таблицы вбок.",
   columnHiddenForRole: "Недоступно оператору",
   done: "Готово",
 
@@ -411,11 +441,16 @@ const ruStrings: Strings = {
   started: "Когда вы начали",
   keepTheirs: "Оставить их",
   useMine: "Сохранить моё",
+  conflictUndecided: "Ваше значение ещё не сохранено. «Сохранить моё» сохранит его, «Оставить их» отбросит.",
   keptTheirs: (id) => `${id}: оставлено значение коллеги.`,
   usedMine: (id) => `${id}: сохранено ваше значение.`,
   colleagueEditing: (id, column, value) => `Коллега изменил ячейку, которую вы редактируете (${id}, ${column}), на «${value}».`,
   colleagueChanged: (id, column, value) => `Коллега изменил поле «${column}» заявки ${id} на «${value}».`,
   simulateColleague: "Правка коллеги",
+  demoTitle: "Об этой демонстрации",
+  demoData: (total) => `Демонстрация: ${total} сгенерированных заявок.`,
+  demoColleague: (seconds) => `Имитируемый коллега меняет одну из них примерно раз в ${seconds} с; измените ту же ячейку, чтобы увидеть конфликт.`,
+  demoColleagueOff: "Имитируемый коллега на этой странице выключен; «Правка коллеги» вносит одну правку.",
 
   exportCsv: "Выгрузить CSV",
   exported: (count, n) => `Выгружено: ${count} ${ru(n, "строка", "строки", "строк")}.`,
@@ -520,7 +555,11 @@ const ar: Strings = {
   search: "البحث",
   searchHint: "المعرّف أو العميل أو المسؤول أو الوسوم أو التعليق أو المنشئ",
   clearFilters: "امسح عوامل التصفية",
+  filtersSummary: (active, n) => (n === 0 ? "عوامل التصفية" : `عوامل التصفية: المفعّل ${active}`),
   shownOf: (shown, total) => `الطلبات: ${shown} من ${total}`,
+  countLoading: "جارٍ تحميل الطلبات",
+  countPending: (count) => `(قيد التحميل: ${count})`,
+  countFailed: (count) => `(لم يُحمَّل: ${count})`,
   updating: "جارٍ التحديث",
 
   density: "الكثافة",
@@ -531,6 +570,8 @@ const ar: Strings = {
   columnsShown: "الأعمدة المعروضة",
   columnsOrder: "الترتيب",
   columnsPinned: "يبقى المعرّف والعميل مثبّتين في البداية.",
+  columnsUnpinned: "على الشاشة الضيقة لا يُثبَّت أي عمود، فيُمرَّر الجدول جانبيًا إلى أي منها.",
+  narrowHint: "مرّر الجدول جانبيًا لرؤية بقية الأعمدة.",
   columnHiddenForRole: "غير متاح لموظف التشغيل",
   done: "تم",
 
@@ -564,11 +605,16 @@ const ar: Strings = {
   started: "عند بدئك",
   keepTheirs: "أبقِ قيمته",
   useMine: "استخدم قيمتي",
+  conflictUndecided: "لم تُحفظ قيمتك بعد. «استخدم قيمتي» يحفظها، و«أبقِ قيمته» يتجاهلها.",
   keptTheirs: (id) => `${id}: بقيت قيمة الزميل.`,
   usedMine: (id) => `${id}: حُفظت قيمتك.`,
   colleagueEditing: (id, column, value) => `غيّر زميل الخلية التي تحرّرها (${id}، ${column}) إلى «${value}».`,
   colleagueChanged: (id, column, value) => `غيّر زميل حقل «${column}» في ${id} إلى «${value}».`,
   simulateColleague: "تعديل زميل",
+  demoTitle: "عن هذا العرض التوضيحي",
+  demoData: (total) => `عرض توضيحي: ${total} طلب مولَّد.`,
+  demoColleague: (seconds) => `يعدّل زميل افتراضي أحدها كل ${seconds} ثانية تقريبًا؛ حرّر الخلية نفسها لترى تعارضًا.`,
+  demoColleagueOff: "الزميل الافتراضي متوقف في هذه الصفحة؛ «تعديل زميل» يُجري تعديلًا واحدًا.",
 
   exportCsv: "صدّر ملف CSV",
   exported: (count) => `الصفوف المصدّرة: ${count}.`,

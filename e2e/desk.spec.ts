@@ -16,6 +16,40 @@ test("50,000 requests reach the grid through the worker", async ({ page }) => {
   await expect(page.locator(".perf")).toContainText("Worker");
 });
 
+test("the desk opens on the requests that need action, with their SLA, the least time first", async ({ page }) => {
+  await page.goto("/?colleague=off");
+  // New, in progress, awaiting the client and in review.
+  await expect(page.getByTestId("row-count")).toHaveText("30,927 of 50,000 requests", { timeout: 15_000 });
+  await expect(page.getByRole("button", { name: /View$/ })).toContainText("Needs action");
+  const sla = page.getByRole("columnheader", { name: "SLA, h" });
+  await expect(sla).toHaveAttribute("aria-sort", "ascending");
+  const headers = await page.getByRole("columnheader").allTextContents();
+  expect(headers.slice(1, 5)).toEqual(["ID", "Client", "Status", "SLA, h"]);
+  for (const name of ["Approved", "Rejected", "Closed"]) {
+    await expect(page.getByRole("button", { name: new RegExp(`^${name} \\d`) })).toHaveAttribute("aria-pressed", "false");
+  }
+  await expect(page.getByRole("button", { name: /^New \d/ })).toHaveAttribute("aria-pressed", "true");
+  // It is first in the list of views.
+  await page.getByRole("button", { name: /View$/ }).click();
+  await expect(page.getByRole("option").first()).toHaveText("Needs action");
+});
+
+test("the demo's own controls sit apart from the desk's, and say what the simulated colleague does", async ({ page }) => {
+  await open(page, "colleague=40");
+  const demo = page.getByRole("region", { name: "About this demo" });
+  await expect(demo).toContainText("A simulated colleague edits one about every 40 seconds; edit the same cell to see a conflict.");
+  await expect(demo.getByRole("radio", { name: "Operator" })).toBeVisible();
+  await expect(demo.getByRole("button", { name: "Colleague’s edit" })).toBeVisible();
+  const actions = page.getByRole("toolbar", { name: "Actions" });
+  await expect(actions.getByRole("button", { name: "Colleague’s edit" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "View" }).getByRole("radio", { name: "Operator" })).toHaveCount(0);
+  await demo.getByRole("button", { name: "Colleague’s edit" }).click();
+  await expect(toasts(page)).toContainText("A colleague set Status");
+  // Switched off by the link, the demo says so.
+  await open(page, "colleague=off");
+  await expect(page.getByRole("region", { name: "About this demo" })).toContainText("The simulated colleague is off on this page");
+});
+
 test("a status chip filters by its count, and chips combine", async ({ page }) => {
   await open(page);
   const approved = page.getByRole("button", { name: /^Approved \d/ });
@@ -113,6 +147,41 @@ test("inline edits are validated, saved and announced", async ({ page }) => {
   await expect(toasts(page)).toContainText("Undone on 1 request.");
 });
 
+test("a mouse edits too: a double click opens the editor, a click picks the value", async ({ page }) => {
+  await open(page, `view=${WITH_COMMENTS}`);
+  const before = await cell(page, 2, 5).textContent();
+  const next = before === "In review" ? "Closed" : "In review";
+  await cell(page, 2, 5).dblclick();
+  const list = grid(page).getByRole("listbox", { name: "Status" });
+  await expect(list).toBeVisible();
+  await list.getByRole("option", { name: next }).click();
+  await expect(list).toBeHidden();
+  await expect(cell(page, 2, 5)).toHaveText(next);
+
+  await cell(page, 2, 9).dblclick();
+  const input = grid(page).getByRole("textbox", { name: "Comment" });
+  await expect(input).toBeFocused();
+  await input.fill("Edited with the mouse");
+  // Leaving the editor for another cell saves a valid value.
+  await cell(page, 5, 2).click();
+  await expect(input).toBeHidden();
+  await expect(cell(page, 2, 9)).toHaveText("Edited with the mouse");
+  await expect(cell(page, 5, 2)).toBeFocused();
+});
+
+test("an editor opened with the mouse also meets a colleague's change with the conflict dialog", async ({ page }) => {
+  await open(page, `view=${WITH_COMMENTS}&colleague=1`);
+  await cell(page, 6, 9).dblclick();
+  const input = grid(page).getByRole("textbox", { name: "Comment" });
+  await input.fill("Mouse note");
+  await expect(toasts(page)).toContainText("A colleague changed the cell you are editing (Z-000007, Comment)", { timeout: 10_000 });
+  await input.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Changed while you were editing" });
+  await expect(dialog.getByTestId("conflict-mine")).toHaveText("Mouse note");
+  await dialog.getByRole("button", { name: "Use mine" }).click();
+  await expect(cell(page, 6, 9)).toHaveText("Mouse note");
+});
+
 test("a colleague's change to the cell being edited opens a conflict dialog", async ({ page }) => {
   await open(page, `view=${WITH_COMMENTS}&colleague=1`);
   await focusCell(page, 3, 9);
@@ -125,10 +194,20 @@ test("a colleague's change to the cell being edited opens a conflict dialog", as
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId("conflict-mine")).toHaveText("My note");
   await expect(dialog.getByTestId("conflict-theirs")).toHaveText(/^Colleague's edit \d+$/);
+  // Escape does not decide: the dialog stays, with the typed value, and
+  // says why.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("conflict-mine")).toHaveText("My note");
+  await expect(dialog.getByRole("alert")).toContainText("Your value is not saved yet. “Use mine” saves it; “Keep theirs” discards it.");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Use mine" }).click();
   await expect(dialog).toBeHidden();
   await expect(cell(page, 3, 9)).toHaveText("My note");
   await expect(toasts(page)).toContainText("Z-000004: your value was saved.");
+  // The focus is back on the cell that was edited.
+  await expect(cell(page, 3, 9)).toBeFocused();
 
   // The other way: keep theirs.
   await focusCell(page, 4, 9);
@@ -139,6 +218,23 @@ test("a colleague's change to the cell being edited opens a conflict dialog", as
   const theirs = (await dialog.getByTestId("conflict-theirs").textContent())!;
   await dialog.getByRole("button", { name: "Keep theirs" }).click();
   await expect(cell(page, 4, 9)).toHaveText(theirs);
+  await expect(cell(page, 4, 9)).toBeFocused();
+});
+
+test("the focus stays on the active cell while rows change under it", async ({ page }) => {
+  await open(page);
+  // Sorted by status, a colleague's status change moves rows around.
+  await page.getByRole("columnheader", { name: "Status" }).click();
+  await expect(page.getByRole("columnheader", { name: "Status" })).toHaveAttribute("aria-sort", "ascending");
+  await focusCell(page, 0, 1);
+  const id = await cell(page, 0, 1).textContent();
+  for (let k = 0; k < 4; k++) {
+    await page.keyboard.press("c");
+    await expect(toasts(page)).toContainText("A colleague set Status");
+  }
+  const focused = page.locator(":focus");
+  await expect(focused).toHaveAttribute("data-cell", /^\d+:1$/);
+  await expect(focused).toHaveText(id!);
 });
 
 test("a bulk change on a keyboard selection can be undone from its toast", async ({ page }) => {
@@ -155,11 +251,31 @@ test("a bulk change on a keyboard selection can be undone from its toast", async
   await bulk.getByRole("button", { name: "Apply" }).click();
   for (const r of [0, 1, 2]) await expect(cell(page, r, 5)).toHaveText("Closed");
   await expect(bulk).toBeHidden();
+  // The bar and its Apply are gone; the focus goes back to the grid's
+  // active cell, not to the page's body.
+  await expect(cell(page, 2, 1)).toBeFocused();
   const toast = toasts(page).getByRole("alertdialog").or(toasts(page).locator(".stoa-toast")).filter({ hasText: "set on 3 requests" });
   await expect(toast).toContainText("Status “Closed” set on 3 requests.");
   await toast.getByRole("button", { name: "Undo" }).click();
   for (const [r, text] of before.entries()) await expect(cell(page, r, 5)).toHaveText(text!);
   await expect(toasts(page)).toContainText("Undone on 3 requests.");
+});
+
+test("after the bulk bar closes, by Apply or by Clear selection, the focus is in the grid", async ({ page }) => {
+  await open(page);
+  await cell(page, 1, 0).locator("input").click();
+  const bulk = page.getByRole("region", { name: "Bulk change" });
+  await bulk.getByRole("button", { name: "Clear selection" }).click();
+  await expect(bulk).toBeHidden();
+  await expect(cell(page, 1, 0)).toBeFocused();
+  await cell(page, 4, 0).locator("input").click();
+  await bulk.getByRole("button", { name: "Apply" }).click();
+  await expect(bulk).toBeHidden();
+  await expect(cell(page, 4, 0)).toBeFocused();
+  // Undo by keyboard from there keeps it.
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(toasts(page)).toContainText("Undone on 1 request.");
+  await expect(cell(page, 4, 0)).toBeFocused();
 });
 
 test("the operator role sees fewer regions, no margins, no bulk changes or export", async ({ page }) => {
@@ -228,7 +344,12 @@ test("views: a preset, a saved view that survives a reload, a link, and deletion
   await page.getByRole("button", { name: "Delete view" }).click();
   const confirm = page.getByRole("alertdialog", { name: "Delete the view “Urgent and low”?" });
   await confirm.getByRole("button", { name: "Delete view" }).click();
-  await expect(page.getByTestId("row-count")).toHaveText(ALL);
+  // The desk goes back to the view it opens on; the focus, on the Delete
+  // view button that went with the saved view, moves on to the next
+  // action rather than to the page's body.
+  await expect(page.getByTestId("row-count")).toHaveText("30,927 of 50,000 requests");
+  await expect(page.getByRole("toolbar", { name: "Actions" }).getByRole("button", { name: "Columns" })).toBeFocused();
+  await expect(page.getByRole("button", { name: /View$/ })).toContainText("Needs action");
   await page.getByRole("button", { name: /View$/ }).click();
   await expect(page.getByRole("option", { name: "Urgent and low" })).toHaveCount(0);
 });

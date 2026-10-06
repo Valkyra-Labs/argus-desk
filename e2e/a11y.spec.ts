@@ -4,9 +4,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { WITH_COMMENTS, cell, expectNoSeriousViolations, grid, open } from "./helpers";
 
 const LANGS = {
-  en: { rows: "50,000 of 50,000 requests", empty: "0 of 50,000 requests", partial: "45,000 of 45,000 requests" },
+  en: { rows: "50,000 of 50,000 requests", empty: "0 of 50,000 requests", partial: "45,000 of 50,000 requests (5,000 did not load)" },
   ru: { rows: "50 000 заявок из 50 000", empty: "0 заявок из 50 000", partial: "45 000 заявок из 45 000" },
-  ar: { rows: "الطلبات: ٥٠٬٠٠٠ من ٥٠٬٠٠٠", empty: "الطلبات: ٠ من ٥٠٬٠٠٠", partial: "الطلبات: ٤٥٬٠٠٠ من ٤٥٬٠٠٠" },
+  ar: { rows: "الطلبات: ٥٠٬٠٠٠ من ٥٠٬٠٠٠", empty: "الطلبات: ٠ من ٥٠٬٠٠٠", partial: "الطلبات: ٤٥٬٠٠٠ من ٥٠٬٠٠٠ (لم يُحمَّل: ٥٬٠٠٠)" },
 } as const;
 
 for (const [lang, words] of Object.entries(LANGS)) {
@@ -100,6 +100,54 @@ for (const width of [1280, 375]) {
     }
   });
 }
+
+test("at 375 px every column can be reached and edited, and the grid starts on the first screen", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  for (const lang of Object.keys(LANGS) as (keyof typeof LANGS)[]) {
+    await open(page, `lang=${lang}`, LANGS[lang].rows);
+    // Nothing is pinned but the selection column, so sideways scrolling
+    // reaches the last column.
+    await expect(page.locator(".stoa-data-grid__row--head .stoa-data-grid__cell--pinned")).toHaveCount(1);
+    await expect(page.locator(".desk__hint")).toBeVisible();
+    const head = await page.locator(".stoa-data-grid__head").boundingBox();
+    expect(head!.y + head!.height, lang).toBeLessThan(812 - 3 * head!.height);
+    const scroller = page.locator(".stoa-data-grid__scroller");
+    await scroller.evaluate((el) => (el.scrollLeft = (getComputedStyle(el).direction === "rtl" ? -1 : 1) * el.scrollWidth));
+    const box = (await scroller.boundingBox())!;
+    // The last column of the view, drawn once the grid has caught up with
+    // the scroll, lies inside the grid.
+    const last = page.locator('.stoa-data-grid__row--head [aria-colindex="9"]');
+    await expect
+      .poll(async () => {
+        const b = await last.boundingBox();
+        return b !== null && b.x >= box.x - 1 && b.x + b.width <= box.x + box.width + 1;
+      }, { message: lang })
+      .toBe(true);
+    // The status column, in view, opens its editor on a double click.
+    await scroller.evaluate((el) => (el.scrollLeft = 0));
+    await grid(page).locator('[data-cell="0:1"]').click();
+    for (let k = 0; k < 4; k++) await page.keyboard.press(lang === "ar" ? "ArrowLeft" : "ArrowRight");
+    const status = grid(page).locator('[data-cell="0:5"]');
+    await expect(status).toBeFocused();
+    await expect(status).toBeInViewport({ ratio: 1 });
+    await status.dblclick();
+    await expect(grid(page).getByRole("listbox")).toBeVisible();
+    await page.keyboard.press("Escape");
+    // The filters are one tap away.
+    const filters = page.getByText(lang === "en" ? "Filters" : lang === "ru" ? "Фильтры" : "عوامل التصفية", { exact: true });
+    await filters.click();
+    await expect(page.locator(".stoa-filter-chip").first()).toBeVisible();
+    await expectNoSeriousViolations(page, `narrow, ${lang}`);
+  }
+});
+
+test("at 1280 px ID and client stay pinned", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await open(page);
+  await expect(page.locator(".stoa-data-grid__row--head .stoa-data-grid__cell--pinned")).toHaveCount(3);
+  await expect(page.locator(".desk__hint")).toHaveCount(0);
+  await expect(page.locator(".stoa-filter-chip").first()).toBeVisible();
+});
 
 for (const theme of ["light", "dark"]) {
   test(`the header stays put while the page region scrolls, scrollbars in Stoa's tokens (${theme})`, async ({ page }) => {
